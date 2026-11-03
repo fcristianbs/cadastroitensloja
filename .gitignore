@@ -1,0 +1,28 @@
+# Ambientes virtuais
+.venv/
+venv/
+ENV/
+env/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Variáveis de ambiente locais
+.env
+
+# Uploads temporários
+temp_uploads/
+*.tmp
+
+# IDEs e editores
+.agent/
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+

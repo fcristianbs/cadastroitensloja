@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Painel Administrativo{% endblock %} · VOXEL LAB</title>
+
+  <!-- Google Fonts: Unbounded, IBM Plex Sans, IBM Plex Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Unbounded:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- CSS Customizado Voxel Lab Admin -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+  <!-- Top Bar & Navbar -->
+  <header class="top-bar">
+    <div class="top-bar-container">
+      <div class="brand-section">
+        <a href="{{ url_for('main.index') }}" class="brand-logo">
+          <span class="voxel-cube"></span>
+          <span>VOXEL LAB</span>
+        </a>
+        <span class="brand-tag">ADMIN · CATÁLOGO</span>
+      </div>
+
+      <nav class="main-nav">
+        <a href="{{ url_for('main.index') }}" class="nav-link {% if active_tab == 'cadastrar' %}active{% endif %}">
+          <i class="fas fa-plus-circle nav-icon"></i>
+          <span>Cadastrar Produto</span>
+        </a>
+        <a href="{{ url_for('main.produtos_list') }}" class="nav-link {% if active_tab == 'produtos' %}active{% endif %}">
+          <i class="fas fa-boxes-stacked nav-icon"></i>
+          <span>Catálogo Atual</span>
+        </a>
+        <a href="{{ url_for('main.git_status_page') }}" class="nav-link {% if active_tab == 'git' %}active{% endif %}">
+          <i class="fas fa-code-branch nav-icon"></i>
+          <span>Git & Deploy</span>
+        </a>
+      </nav>
+
+      <div class="external-actions">
+        <!-- Git Status Pill -->
+        <div class="repo-status-pill" title="Repositório: {{ repo_status.repo_path }}">
+          <span class="status-dot {% if not repo_status.is_clean %}dirty{% elif repo_status.error %}error{% endif %}"></span>
+          <span>{{ repo_status.branch or 'main' }}</span>
+          {% if repo_status.latest_commit_hash %}
+            <span style="color: var(--ink-faint);">({{ repo_status.latest_commit_hash }})</span>
+          {% endif %}
+        </div>
+
+        <!-- Botão Sync / Pull Rápido -->
+        <button type="button" class="btn btn-outline" id="btn-git-pull" style="padding: 0.4rem 0.75rem; font-size: 0.82rem;" title="Sincronizar com GitHub (git pull)">
+          <i class="fas fa-arrows-rotate"></i>
+          <span>Pull</span>
+        </button>
+
+        <!-- Link Loja Produção -->
+        <a href="{{ config.VERCEL_DEPLOY_URL }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="padding: 0.4rem 0.85rem; font-size: 0.82rem;" title="Abrir site no ar no Vercel">
+          <i class="fas fa-external-link-alt"></i>
+          <span>Ver Loja</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Container Principal -->
+  <main class="app-container">
+    <!-- Mensagens Flash -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="margin-bottom: 1.5rem;">
+          {% for category, message in messages %}
+            <div style="padding: 0.85rem 1.25rem; border-radius: var(--radius-md); font-size: 0.92rem; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; {% if category == 'success' %}background: var(--ok-soft); border: 1px solid var(--ok-border); color: var(--ok);{% else %}background: var(--error-soft); border: 1px solid var(--error-border); color: var(--error);{% endif %}">
+              <span>{{ message }}</span>
+              <button onclick="this.parentElement.remove()" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 1.1rem;">&times;</button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div>
+      <strong>VOXEL LAB</strong> · Sistema Interno de Gestão de Catálogo Serverless
+    </div>
+    <div>
+      Repositório: <code style="color: var(--cad);">{{ repo_status.repo_path }}</code>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>
+

@@ -1,0 +1,501 @@
+{% extends "base.html" %}
+
+{% block title %}Cadastrar Produto{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Cadastrar Novo Produto</h1>
+    <p class="page-subtitle">Preencha a ficha técnica da peça. Os dados serão validados, gravados no catálogo e enviados ao GitHub com deploy automático.</p>
+  </div>
+  {% if clone_data %}
+    <div style="background: var(--cad-soft); border: 1px solid var(--cad-border); color: var(--cad); padding: 0.5rem 1rem; border-radius: var(--radius-md); font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+      <i class="fas fa-copy"></i>
+      <span>Modo Modelo: Duplicando dados a partir de <strong>{{ clone_data.nome }}</strong>. Altere o nome e o slug para salvar.</span>
+    </div>
+  {% endif %}
+</div>
+
+<div class="product-workspace-grid">
+  <!-- =========================================================================
+       COLUNA DA ESQUERDA: FORMULÁRIO COMPLETO
+       ========================================================================= -->
+  <form id="product-form" method="POST" action="{{ url_for('main.cadastrar_produto') }}" enctype="multipart/form-data">
+    
+    <!-- 1. IDENTIFICAÇÃO BÁSICA -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">01</span>
+          <span>Identificação da Peça</span>
+        </h2>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="input-nome">Nome do Produto <span class="required">*</span></label>
+        <input type="text" id="input-nome" name="nome" class="form-control" placeholder="ex: Suporte Starlink Mini · Veicular" value="{{ clone_data.nome if clone_data else '' }}" required>
+        <span class="form-hint"><i class="fas fa-info-circle"></i> Use nomes claros e objetivos com a aplicação da peça.</span>
+      </div>
+
+      <div class="form-grid-3">
+        <div class="form-group">
+          <label class="form-label" for="input-slug">Slug (URL) <span class="required">*</span></label>
+          <div class="input-with-badge">
+            <input type="text" id="input-slug" name="slug" class="form-control" placeholder="ex: suporte-starlink-mini-veicular" value="{{ (clone_data.slug ~ '-novo') if clone_data else '' }}" required style="font-family: var(--font-mono); font-size: 0.85rem;">
+            <span id="slug-badge" class="input-badge" style="display: none;"></span>
+          </div>
+          <span class="form-hint">Gerado automaticamente em kebab-case.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="select-categoria">Categoria <span class="required">*</span></label>
+          <select id="select-categoria" name="categoria" class="form-control" required>
+            {% for cat in categorias %}
+              <option value="{{ cat }}" {% if clone_data and clone_data.categoria == cat %}selected{% endif %}>{{ cat|capitalize }}</option>
+            {% endfor %}
+          </select>
+          <span class="form-hint">Exclusivas: engenharia, casa, gadgets, figures.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-subcategoria">Subcategoria</label>
+          <input type="text" id="input-subcategoria" name="subcategoria" class="form-control" placeholder="ex: starlink, suportes, reposicao" value="{{ clone_data.subcategoria if clone_data else 'starlink' }}">
+          <span class="form-hint">Agrupa peças no filtro do catálogo.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. DESCRIÇÃO E VENDA -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">02</span>
+          <span>Apresentação & Venda</span>
+        </h2>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="input-resumo">Resumo (Texto do Card) <span class="required">*</span></label>
+        <input type="text" id="input-resumo" name="resumo" class="form-control" placeholder="ex: Fixação aerodinâmica de alta resistência para Starlink Mini em teto, rack ou caçamba." value="{{ clone_data.resumo if clone_data else '' }}" required>
+        <span class="form-hint">Frase de 1 linha que resume o benefício da peça.</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="input-descricao">Descrição Completa <span class="required">*</span></label>
+        <textarea id="input-descricao" name="descricao" class="form-control" rows="3" placeholder="Detalhes de engenharia, resistência mecânica, compatibilidade e situações de uso..." required>{{ clone_data.descricao if clone_data else '' }}</textarea>
+      </div>
+
+      <div class="form-grid-3">
+        <div class="form-group">
+          <label class="form-label" for="input-preco">Preço (R$)</label>
+          <input type="number" step="0.01" min="0" id="input-preco" name="preco" class="form-control" placeholder="ex: 129.90 (ou vazio p/ Sob consulta)" value="{{ clone_data.preco if (clone_data and clone_data.preco is not none) else '' }}">
+          <span class="form-hint">Vazio = "Sob consulta" no WhatsApp.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-preco-parcelado">Texto de Parcelamento</label>
+          <input type="text" id="input-preco-parcelado" name="precoParcelado" class="form-control" placeholder="ex: ou até 12x no Mercado Livre" value="{{ clone_data.precoParcelado if clone_data else 'ou [n]x no Mercado Livre' }}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-ml-url">Link Mercado Livre (Opcional)</label>
+          <input type="url" id="input-ml-url" name="mercadoLivreUrl" class="form-control" placeholder="https://produto.mercadolivre.com.br/..." value="{{ clone_data.mercadoLivreUrl if clone_data else '' }}">
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. MATERIAL & REGRA DE USO (RN05) -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">03</span>
+          <span>Material & Regra de Uso (RN05)</span>
+        </h2>
+      </div>
+
+      <div class="form-grid-3">
+        <div class="form-group">
+          <label class="form-label" for="select-uso">Ambiente de Uso <span class="required">*</span></label>
+          <select id="select-uso" name="uso" class="form-control" required>
+            <option value="externo" {% if not clone_data or clone_data.uso == 'externo' %}selected{% endif %}>Externo (Sol, Chuva e Estrada)</option>
+            <option value="interno" {% if clone_data and clone_data.uso == 'interno' %}selected{% endif %}>Interno (Ambiente protegido)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-material">Material de Impressão <span class="required">*</span></label>
+          <input type="text" id="input-material" name="material" class="form-control" placeholder="ex: PETG-UV, PETG, ASA" value="{{ clone_data.material if clone_data else 'PETG-UV' }}" required>
+          <div id="material-chips" class="quick-chips" style="margin-top: 0.35rem;"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-specs-resumo">Specs Resumo (Selo)</label>
+          <input type="text" id="input-specs-resumo" name="specs_resumo" class="form-control" placeholder="ex: aerodinâmico · UV" value="{{ clone_data.specs_resumo if clone_data else 'aerodinâmico · UV' }}">
+        </div>
+      </div>
+
+      <!-- Alerta Dinâmico RN05 -->
+      <div id="rn05-alert-box" class="rule-alert-box" style="display: none;"></div>
+    </div>
+
+    <!-- 4. SELOS & DESTAQUE -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">04</span>
+          <span>Destaques & Selos</span>
+        </h2>
+      </div>
+
+      <div class="form-grid-3">
+        <div class="form-group">
+          <label class="form-label" for="input-selo">Selo Promocional</label>
+          <input type="text" id="input-selo" name="selo" class="form-control" placeholder="ex: NOVO, MAIS VENDIDO" value="{{ clone_data.selo if clone_data else 'NOVO' }}">
+          <div class="quick-chips" style="margin-top: 0.35rem;">
+            <button type="button" class="chip-btn" onclick="document.getElementById('input-selo').value='NOVO'; document.getElementById('input-selo').dispatchEvent(new Event('input'));">NOVO</button>
+            <button type="button" class="chip-btn" onclick="document.getElementById('input-selo').value='MAIS VENDIDO'; document.getElementById('input-selo').dispatchEvent(new Event('input'));">MAIS VENDIDO</button>
+            <button type="button" class="chip-btn" onclick="document.getElementById('input-selo').value='SOB MEDIDA'; document.getElementById('input-selo').dispatchEvent(new Event('input'));">SOB MEDIDA</button>
+            <button type="button" class="chip-btn" onclick="document.getElementById('input-selo').value=''; document.getElementById('input-selo').dispatchEvent(new Event('input'));">Sem Selo</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-ordem">Ordem de Prioridade</label>
+          <input type="number" id="input-ordem" name="ordem" class="form-control" min="1" value="{{ clone_data.ordem if clone_data else 1 }}">
+          <span class="form-hint">Menor número = aparece primeiro.</span>
+        </div>
+
+        <div class="form-group" style="display: flex; flex-direction: column; justify-content: center;">
+          <label class="form-label">Destaque na Home</label>
+          <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; margin-top: 0.25rem;">
+            <input type="checkbox" name="destaque" value="true" {% if not clone_data or clone_data.destaque %}checked{% endif %} style="width: 18px; height: 18px; accent-color: var(--nozzle);">
+            <span style="font-size: 0.9rem; font-weight: 500;">Exibir nos 'Mais Pedidos' da capa</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. ESPECIFICAÇÕES TÉCNICAS (SPECS) -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">05</span>
+          <span>Ficha Técnica (Specs)</span>
+        </h2>
+      </div>
+
+      <div class="quick-chips">
+        <span style="font-size: 0.8rem; color: var(--ink-faint); align-self: center; margin-right: 0.25rem;">Adicionar Preset:</span>
+        <button type="button" class="chip-btn spec-preset-chip" data-key="MATERIAL" data-val="PETG-UV">+ MATERIAL</button>
+        <button type="button" class="chip-btn spec-preset-chip" data-key="CAMADA" data-val="0,20 mm">+ CAMADA</button>
+        <button type="button" class="chip-btn spec-preset-chip" data-key="PREENCHIMENTO" data-val="60% gyroid">+ PREENCHIMENTO</button>
+        <button type="button" class="chip-btn spec-preset-chip" data-key="USO" data-val="Externo, sol, chuva e estrada">+ USO</button>
+        <button type="button" class="chip-btn spec-preset-chip" data-key="COMPATÍVEL" data-val="Starlink Mini">+ COMPATÍVEL</button>
+        <button type="button" class="chip-btn spec-preset-chip" data-key="FIXAÇÃO" data-val="Rack de Teto">+ FIXAÇÃO</button>
+        <button type="button" class="chip-btn spec-preset-chip" data-key="PRAZO" data-val="3 a 5 dias úteis">+ PRAZO</button>
+      </div>
+
+      <div id="specs-container">
+        {% if clone_data and clone_data.specs %}
+          {% for spec in clone_data.specs %}
+            <div class="dynamic-row spec-row">
+              <input type="text" class="form-control spec-chave" placeholder="CHAVE" value="{{ spec.chave }}" style="width: 35%;">
+              <input type="text" class="form-control spec-valor" placeholder="VALOR" value="{{ spec.valor }}" style="flex: 1;">
+              <button type="button" class="btn-remove-row" onclick="this.closest('.dynamic-row').remove();"><i class="fas fa-trash-alt"></i></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      <button type="button" id="btn-add-spec" class="btn-add-item">
+        <i class="fas fa-plus"></i> Adicionar Especificação Técnica
+      </button>
+    </div>
+
+    <!-- 6. VARIAÇÕES DE PRODUTO -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">06</span>
+          <span>Variações (Tamanho / Modelo / Fixação)</span>
+        </h2>
+      </div>
+
+      <div id="variacoes-container">
+        {% if clone_data and clone_data.variacoes %}
+          {% for var in clone_data.variacoes %}
+            <div class="dynamic-row var-row" style="background: var(--surface-overlay); padding: 0.75rem; border-radius: var(--radius-md); flex-direction: column; align-items: stretch; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <input type="text" class="form-control var-nome" placeholder="Nome da Variação" value="{{ var.nome }}" style="flex: 1;">
+                <button type="button" class="btn-remove-row" onclick="this.closest('.var-row').remove();"><i class="fas fa-trash-alt"></i></button>
+              </div>
+              <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 0.5rem;">
+                <input type="text" class="form-control var-opcoes" placeholder="Opções separadas por vírgula" value="{{ var.opcoes|join(', ') }}">
+                <input type="text" class="form-control var-padrao" placeholder="Padrão" value="{{ var.padrao }}">
+              </div>
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--ink-muted); cursor: pointer;">
+                <input type="checkbox" class="var-permite" {% if var.permiteOutraMedida %}checked{% endif %}>
+                Permite Outra Medida (redireciona para Orçamento Sob Medida)
+              </label>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      <button type="button" id="btn-add-var" class="btn-add-item">
+        <i class="fas fa-plus"></i> Adicionar Nova Variação
+      </button>
+    </div>
+
+    <!-- 7. CORES DISPONÍVEIS -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">07</span>
+          <span>Cores Disponíveis</span>
+        </h2>
+      </div>
+
+      <div id="cores-container">
+        {% if clone_data and clone_data.cores %}
+          {% for cor in clone_data.cores %}
+            <div class="color-item-row">
+              <input type="color" class="color-swatch-picker" value="{{ cor.hex }}">
+              <input type="text" class="form-control cor-nome" placeholder="Nome da Cor" value="{{ cor.nome }}" style="flex: 1;">
+              <input type="text" class="form-control cor-hex" placeholder="#111111" value="{{ cor.hex }}" style="width: 90px; font-family: var(--font-mono);">
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--ink-muted); cursor: pointer;">
+                <input type="radio" name="cor_padrao_radio" class="cor-padrao" {% if cor.padrao %}checked{% endif %}> Padrão
+              </label>
+              <button type="button" class="btn-remove-row" onclick="this.closest('.color-item-row').remove();"><i class="fas fa-trash-alt"></i></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      <button type="button" id="btn-add-cor" class="btn-add-item">
+        <i class="fas fa-plus"></i> Adicionar Cor
+      </button>
+    </div>
+
+    <!-- 8. PASSOS DE INSTALAÇÃO -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">08</span>
+          <span>Passos de Instalação</span>
+        </h2>
+      </div>
+
+      <div id="instalacao-container">
+        {% if clone_data and clone_data.instalacao %}
+          {% for passo in clone_data.instalacao %}
+            <div class="dynamic-row step-row">
+              <span style="font-family: var(--font-mono); font-weight: 700; color: var(--cad); width: 24px;">{{ "%02d."|format(loop.index) }}</span>
+              <input type="text" class="form-control step-input" placeholder="Passo da instalação" value="{{ passo }}" style="flex: 1;">
+              <button type="button" class="btn-remove-row" onclick="this.closest('.step-row').remove();"><i class="fas fa-trash-alt"></i></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      <button type="button" id="btn-add-step" class="btn-add-item">
+        <i class="fas fa-plus"></i> Adicionar Passo de Instalação
+      </button>
+    </div>
+
+    <!-- 9. PRODUTOS RELACIONADOS -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">09</span>
+          <span>Produtos Relacionados (Sugestões de Compra)</span>
+        </h2>
+      </div>
+
+      <p style="font-size: 0.82rem; color: var(--ink-muted); margin-bottom: 0.75rem;">
+        Selecione outras peças do catálogo para sugerir no rodapé deste produto:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.5rem; max-height: 180px; overflow-y: auto; padding: 0.5rem; background: var(--surface-overlay); border-radius: var(--radius-md); border: 1px solid var(--line);">
+        {% for p in produtos %}
+          <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--ink); cursor: pointer; padding: 4px; border-radius: var(--radius-sm);" title="{{ p.nome }}">
+            <input type="checkbox" name="relacionados[]" value="{{ p.slug }}" {% if clone_data and clone_data.relacionados and p.slug in clone_data.relacionados %}checked{% endif %} style="accent-color: var(--cad);">
+            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ p.nome }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 10. UPLOAD DE FOTOS -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span class="card-title-step">10</span>
+          <span>Foto do Produto (Espelhamento Automático)</span>
+        </h2>
+      </div>
+
+      <div id="photo-dropzone" class="photo-dropzone">
+        <input type="file" id="input-foto" name="foto" class="file-input-hidden" accept=".png,.webp,.jpg,.jpeg">
+        <div class="dropzone-icon"><i class="fas fa-cloud-arrow-up"></i></div>
+        <div class="dropzone-text">Arraste a foto do produto aqui ou clique para selecionar</div>
+        <div class="dropzone-subtext">Formatos recomendados: PNG ou WebP com alta resolução (até 16MB)</div>
+      </div>
+
+      <!-- Preview do Arquivo Selecionado -->
+      <div id="photo-preview-container" class="photo-preview-container" style="display: none;">
+        <img id="photo-preview-thumb" class="photo-preview-thumb" src="" alt="Thumbnail">
+        <div class="photo-preview-info">
+          <div id="photo-preview-name" class="photo-preview-name">foto.png</div>
+          <div id="photo-preview-paths" class="photo-preview-paths"></div>
+        </div>
+      </div>
+
+      <div class="form-grid-2" style="margin-top: 1rem;">
+        <div class="form-group">
+          <label class="form-label" for="input-img-alt">Texto Alternativo (Alt Text)</label>
+          <input type="text" id="input-img-alt" name="imagem_alt" class="form-control" placeholder="ex: Suporte Starlink Mini Veicular instalado" value="{{ (clone_data.imagens[0].alt if clone_data and clone_data.imagens else '') }}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="select-img-tipo">Tipo de Foto</label>
+          <select id="select-img-tipo" name="imagem_tipo" class="form-control">
+            <option value="instalada" selected>Instalada (no veículo, mastro ou parede)</option>
+            <option value="isolada">Isolada (em fundo limpo)</option>
+            <option value="escala">Escala (com mão ou objeto de referência)</option>
+            <option value="CAD">CAD (render 3D de projeto)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 11. AUTOMAÇÃO GIT & SUBMISSÃO -->
+    <div class="card" style="border-color: var(--nozzle-border); background: linear-gradient(180deg, var(--surface-raised) 0%, rgba(58, 26, 11, 0.2) 100%);">
+      <div class="card-header" style="border-bottom-color: var(--nozzle-border);">
+        <h2 class="card-title">
+          <span class="card-title-step" style="background: var(--nozzle); color: var(--on-nozzle); border-color: var(--nozzle);">11</span>
+          <span>Publicar no Catálogo (Git & Deploy)</span>
+        </h2>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
+          <input type="checkbox" name="auto_push" value="true" checked style="width: 20px; height: 20px; accent-color: var(--nozzle);">
+          <span style="font-size: 0.95rem; font-weight: 600;">
+            Realizar Commit e Push automático para GitHub (<code style="color: var(--nozzle);">origin/main</code>)
+          </span>
+        </label>
+        <span style="font-size: 0.8rem; color: var(--ink-muted);">Disparará o deploy no Vercel</span>
+      </div>
+
+      <button type="submit" id="btn-submit-product" class="btn btn-primary btn-lg" style="width: 100%;">
+        <i class="fas fa-rocket"></i>
+        <span>Publicar Produto no Catálogo</span>
+      </button>
+    </div>
+
+  </form>
+
+  <!-- =========================================================================
+       COLUNA DA DIREITA: LIVE PREVIEW DO PRODUTO (Voxel Lab Card)
+       ========================================================================= -->
+  <aside class="live-preview-panel">
+    <div class="preview-badge-label">
+      <span><i class="fas fa-eye"></i> Visualização em Tempo Real</span>
+      <span style="color: var(--ink-muted); font-size: 10px;">VITRINE VOXEL LAB</span>
+    </div>
+
+    <div class="voxel-product-card">
+      <!-- Media Box -->
+      <div class="preview-media-box">
+        <img id="preview-img" class="preview-img" src="{{ clone_data.imagens[0].src if (clone_data and clone_data.imagens) else '' }}" alt="Preview" style="{% if not (clone_data and clone_data.imagens and clone_data.imagens[0].src) %}display: none;{% endif %}">
+        <div id="preview-placeholder" class="preview-placeholder-grid" style="{% if clone_data and clone_data.imagens and clone_data.imagens[0].src %}display: none;{% endif %}">
+          <i class="fas fa-cube" style="font-size: 2.5rem; color: var(--line-strong);"></i>
+          <span>MALHA VOXEL LAB</span>
+        </div>
+        <span id="preview-selo" class="preview-pill-selo" style="{% if not (clone_data and clone_data.selo) %}display: none;{% endif %}">{{ clone_data.selo if clone_data else 'NOVO' }}</span>
+        <span id="preview-uso" class="preview-pill-uso">{{ 'EXTERNO · UV' if (not clone_data or clone_data.uso == 'externo') else 'INTERNO' }}</span>
+      </div>
+
+      <!-- Conteúdo do Card -->
+      <div class="preview-content">
+        <div id="preview-category" class="preview-cat-breadcrumb">ENGENHARIA · STARLINK</div>
+        <h3 id="preview-title" class="preview-title">Nome do Produto</h3>
+        <p id="preview-summary" class="preview-summary">Resumo curto destacando a utilidade da peça.</p>
+
+        <!-- Chips de Specs -->
+        <div id="preview-specs-bar" class="preview-specs-pill-bar">
+          <span class="spec-chip">PETG-UV</span>
+          <span class="spec-chip">0,20 mm</span>
+          <span class="spec-chip">40% gyroid</span>
+        </div>
+
+        <!-- Preço & Parcelas -->
+        <div class="preview-price-box">
+          <div>
+            <div id="preview-price" class="preview-price-val">Sob consulta</div>
+            <div id="preview-installments" class="preview-installments">ou [n]x no Mercado Livre</div>
+          </div>
+        </div>
+
+        <!-- Botão WhatsApp Simulado -->
+        <div class="preview-btn-mock">
+          <i class="fab fa-whatsapp"></i>
+          <span>Pedir pelo WhatsApp</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card de Ajuda Rápida -->
+    <div class="card" style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--ink-muted);">
+      <div style="font-weight: 600; color: var(--cad); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+        <i class="fas fa-shield-halved"></i>
+        <span>Regras Ativas do Catálogo</span>
+      </div>
+      <ul style="padding-left: 1.25rem; line-height: 1.6;">
+        <li><strong>RN01:</strong> Slug único em kebab-case.</li>
+        <li><strong>RN02:</strong> Categorias estritas do negócio.</li>
+        <li><strong>RN05:</strong> Uso externo exige PETG-UV, PETG ou ASA.</li>
+        <li><strong>Fotos:</strong> Salvas em <code>static/</code> e <code>public/static/</code>.</li>
+      </ul>
+    </div>
+  </aside>
+</div>
+
+<!-- =========================================================================
+     MODAL DE PROGRESSO DO PIPELINE GIT / DEPLOY
+     ========================================================================= -->
+<div id="deploy-modal" class="modal-backdrop">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">
+        <i class="fas fa-terminal" style="color: var(--cad);"></i>
+        <span>Pipeline de Publicação Git</span>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <p style="font-size: 0.88rem; color: var(--ink-muted); margin-bottom: 0.5rem;">
+        Executando validações, sincronização e deploy automatizado para o Vercel...
+      </p>
+
+      <div class="progress-bar-container">
+        <div id="deploy-progress-fill" class="progress-bar-fill"></div>
+      </div>
+
+      <div id="terminal-log-content" class="terminal-log-box"></div>
+    </div>
+
+    <div class="modal-footer">
+      <a id="modal-btn-view-site" href="{{ config.VERCEL_DEPLOY_URL }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: none;">
+        <i class="fas fa-arrow-up-right-from-square"></i>
+        <span>Ver no Catálogo Online</span>
+      </a>
+      <button type="button" id="modal-btn-close" class="btn btn-outline" style="display: none;">
+        <span>Fechar</span>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

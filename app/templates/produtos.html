@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Catálogo Atual{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Produtos Cadastrados</h1>
+    <p class="page-subtitle">Base de dados ativa em <code>data/produtos.json</code>. Total de {{ total }} itens catalogados.</p>
+  </div>
+  <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+    <i class="fas fa-plus"></i>
+    <span>Cadastrar Novo Produto</span>
+  </a>
+</div>
+
+<!-- Métricas e Contadores -->
+<div class="form-grid-3" style="margin-bottom: 1.5rem;">
+  <div class="card" style="margin-bottom: 0;">
+    <div style="font-size: 0.8rem; color: var(--ink-muted); text-transform: uppercase; font-family: var(--font-mono); letter-spacing: 0.05em;">Total de Peças</div>
+    <div style="font-family: var(--font-display); font-size: 1.8rem; font-weight: 700; color: var(--nozzle); margin-top: 0.25rem;">{{ total }}</div>
+  </div>
+
+  <div class="card" style="margin-bottom: 0;">
+    <div style="font-size: 0.8rem; color: var(--ink-muted); text-transform: uppercase; font-family: var(--font-mono); letter-spacing: 0.05em;">Destaques na Capa</div>
+    <div style="font-family: var(--font-display); font-size: 1.8rem; font-weight: 700; color: var(--cad); margin-top: 0.25rem;">{{ destaques }}</div>
+  </div>
+
+  <div class="card" style="margin-bottom: 0;">
+    <div style="font-size: 0.8rem; color: var(--ink-muted); text-transform: uppercase; font-family: var(--font-mono); letter-spacing: 0.05em;">Por Categoria</div>
+    <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; flex-wrap: wrap;">
+      {% for cat, count in categorias_count.items() %}
+        <span class="brand-tag" style="font-size: 11px;">{{ cat }}: <strong>{{ count }}</strong></span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Barra de Busca -->
+<div class="card">
+  <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 250px;">
+      <input type="text" id="filtro-busca" class="form-control" placeholder="Buscar por nome, slug, material ou especificação...">
+    </div>
+    <select id="filtro-categoria" class="form-control" style="width: 200px;">
+      <option value="">Todas as Categorias</option>
+      <option value="engenharia">Engenharia</option>
+      <option value="casa">Casa</option>
+      <option value="gadgets">Gadgets</option>
+      <option value="figures">Figures</option>
+    </select>
+  </div>
+</div>
+
+<!-- Tabela de Produtos -->
+<div class="card table-responsive" style="padding: 0;">
+  <table class="data-table" id="tabela-produtos">
+    <thead>
+      <tr>
+        <th style="width: 60px;">Foto</th>
+        <th>Peça / Slug</th>
+        <th>Categoria</th>
+        <th>Material / Uso</th>
+        <th>Preço</th>
+        <th>Selo</th>
+        <th style="text-align: right;">Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in produtos %}
+        <tr class="produto-linha" data-nome="{{ p.nome|lower }}" data-slug="{{ p.slug }}" data-categoria="{{ p.categoria }}" data-material="{{ p.material|lower }}">
+          <td>
+            {% if p.imagens and p.imagens[0].src %}
+              <img src="{{ p.imagens[0].src }}" alt="{{ p.nome }}" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover; background: var(--surface-overlay); border: 1px solid var(--line);">
+            {% else %}
+              <div style="width: 44px; height: 44px; border-radius: var(--radius-sm); background: var(--surface-overlay); display: flex; align-items: center; justify-content: center; color: var(--ink-faint); border: 1px solid var(--line);">
+                <i class="fas fa-cube"></i>
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            <div style="font-weight: 600; color: var(--ink);">{{ p.nome }}</div>
+            <div style="font-family: var(--font-mono); font-size: 11px; color: var(--ink-muted); margin-top: 2px;">{{ p.slug }}</div>
+          </td>
+          <td>
+            <span class="spec-chip">{{ p.categoria|upper }}</span>
+            {% if p.subcategoria %}
+              <span style="font-size: 0.78rem; color: var(--ink-faint);">/ {{ p.subcategoria }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <div><strong>{{ p.material }}</strong></div>
+            <div style="font-size: 0.78rem; color: {% if p.uso == 'externo' %}var(--cad){% else %}var(--ink-muted){% endif %};">
+              {{ 'Externo (UV)' if p.uso == 'externo' else 'Interno' }}
+            </div>
+          </td>
+          <td>
+            {% if p.preco %}
+              <span style="font-family: var(--font-display); font-weight: 700; color: var(--nozzle);">R$ {{ "%.2f"|format(p.preco)|replace('.', ',') }}</span>
+            {% else %}
+              <span style="color: var(--ink-faint); font-size: 0.85rem;">Sob consulta</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if p.selo %}
+              <span class="preview-pill-selo" style="position: static; display: inline-block;">{{ p.selo }}</span>
+            {% elif p.destaque %}
+              <span class="brand-tag" style="color: var(--cad); border-color: var(--cad-border);">DESTAQUE</span>
+            {% else %}
+              <span style="color: var(--ink-faint); font-size: 0.8rem;">—</span>
+            {% endif %}
+          </td>
+          <td style="text-align: right; white-space: nowrap;">
+            <a href="{{ url_for('main.index', clone=p.slug) }}" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem;" title="Usar este produto como modelo para novo cadastro">
+              <i class="fas fa-copy"></i>
+              <span>Duplicar</span>
+            </a>
+            <a href="{{ config.VERCEL_DEPLOY_URL }}/produto/{{ p.slug }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem;" title="Ver produto publicado no site">
+              <i class="fas fa-external-link-alt"></i>
+            </a>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  // Filtro instantâneo no cliente
+  document.addEventListener('DOMContentLoaded', () => {
+    const inputBusca = document.getElementById('filtro-busca');
+    const selectCat = document.getElementById('filtro-categoria');
+    const linhas = document.querySelectorAll('.produto-linha');
+
+    function filtrar() {
+      const termo = (inputBusca.value || '').toLowerCase().trim();
+      const cat = selectCat.value;
+
+      linhas.forEach(linha => {
+        const nome = linha.getAttribute('data-nome');
+        const slug = linha.getAttribute('data-slug');
+        const material = linha.getAttribute('data-material');
+        const categoria = linha.getAttribute('data-categoria');
+
+        const matchTermo = !termo || nome.includes(termo) || slug.includes(termo) || material.includes(termo);
+        const matchCat = !cat || categoria === cat;
+
+        if (matchTermo && matchCat) {
+          linha.style.display = '';
+        } else {
+          linha.style.display = 'none';
+        }
+      });
+    }
+
+    inputBusca.addEventListener('input', filtrar);
+    selectCat.addEventListener('change', filtrar);
+  });
+</script>
+{% endblock %}
+

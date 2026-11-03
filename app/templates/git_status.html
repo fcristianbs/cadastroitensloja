@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Diagnóstico Git & Deploy{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Diagnóstico Git & Deploy</h1>
+    <p class="page-subtitle">Monitoramento do repositório local e status da sincronização com o GitHub e Vercel.</p>
+  </div>
+</div>
+
+<div class="form-grid-2">
+  <!-- Status do Repositório -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">
+        <i class="fas fa-server" style="color: var(--cad);"></i>
+        <span>Repositório Local</span>
+      </h2>
+      <span class="brand-tag" style="{% if repo_status.is_clean %}color: var(--ok); border-color: var(--ok-border);{% else %}color: var(--warning); border-color: var(--warning);{% endif %}">
+        {{ 'LIMPO / SINCRONIZADO' if repo_status.is_clean else 'MODIFICAÇÕES PENDENTES' }}
+      </span>
+    </div>
+
+    <div style="font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.8;">
+      <div><strong style="color: var(--ink-muted);">Caminho:</strong> {{ repo_status.repo_path }}</div>
+      <div><strong style="color: var(--ink-muted);">Branch Atual:</strong> <span style="color: var(--cad);">{{ repo_status.branch }}</span></div>
+      <div><strong style="color: var(--ink-muted);">Remote Origin:</strong> <a href="{{ repo_status.remote_url }}" target="_blank">{{ repo_status.remote_url }}</a></div>
+      <div><strong style="color: var(--ink-muted);">Último Commit:</strong> <code style="color: var(--nozzle);">{{ repo_status.latest_commit_hash }}</code> - {{ repo_status.latest_commit_message }}</div>
+      {% if repo_status.latest_commit_date %}
+        <div><strong style="color: var(--ink-muted);">Data:</strong> {{ repo_status.latest_commit_date }}</div>
+      {% endif %}
+    </div>
+
+    <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem;">
+      <button type="button" class="btn btn-outline" id="btn-git-pull-manual">
+        <i class="fas fa-arrows-rotate"></i>
+        <span>Executar git pull origin {{ repo_status.branch or 'main' }}</span>
+      </button>
+      <a href="{{ repo_status.remote_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">
+        <i class="fab fa-github"></i>
+        <span>Ver no GitHub</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Status do Vercel -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">
+        <i class="fas fa-cloud" style="color: var(--nozzle);"></i>
+        <span>Deploy Automático no Vercel</span>
+      </h2>
+      <span class="brand-tag" style="color: var(--ok); border-color: var(--ok-border);">PRODUÇÃO</span>
+    </div>
+
+    <p style="font-size: 0.88rem; color: var(--ink-muted); line-height: 1.6; margin-bottom: 1rem;">
+      O catálogo estático da <strong>VOXEL LAB</strong> é hospedado na nuvem pelo Vercel. Cada produto publicado dispara um <code>git push</code> para o GitHub que aciona a compilação instantânea da vitrine.
+    </p>
+
+    <div style="background: var(--surface-overlay); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 0.85rem; margin-bottom: 1.25rem;">
+      <div style="color: var(--ink-muted); margin-bottom: 0.35rem;">URL Oficial da Vitrine:</div>
+      <a href="{{ config.VERCEL_DEPLOY_URL }}" target="_blank" rel="noopener noreferrer" style="color: var(--cad); font-weight: 600; font-size: 0.95rem;">
+        {{ config.VERCEL_DEPLOY_URL }}
+      </a>
+    </div>
+
+    <a href="{{ config.VERCEL_DEPLOY_URL }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="width: 100%;">
+      <i class="fas fa-external-link-alt"></i>
+      <span>Acessar Catálogo no Vercel</span>
+    </a>
+  </div>
+</div>
+
+{% if repo_status.uncommitted_files %}
+  <div class="card" style="border-color: var(--warning); background: rgba(251, 191, 36, 0.05);">
+    <div class="card-header" style="border-bottom-color: rgba(251, 191, 36, 0.2);">
+      <h2 class="card-title" style="color: var(--warning);">
+        <i class="fas fa-triangle-exclamation"></i>
+        <span>Arquivos com alterações locais pendentes</span>
+      </h2>
+    </div>
+    <div style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--ink);">
+      <ul style="padding-left: 1.25rem; line-height: 1.8;">
+        {% for file in repo_status.uncommitted_files %}
+          <li><code>{{ file }}</code></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endif %}
+
+<script>
+  document.getElementById('btn-git-pull-manual')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-git-pull-manual');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Executando git pull...';
+    try {
+      const res = await fetch('/api/git/pull', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        alert('Sincronização concluída:\n' + (data.output || 'Já está atualizado.'));
+        window.location.reload();
+      } else {
+        alert('Erro ao executar git pull: ' + data.error);
+      }
+    } catch (e) {
+      alert('Erro de comunicação: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Executar git pull';
+    }
+  });
+</script>
+{% endblock %}
+
