@@ -497,8 +497,35 @@ function initPublishPipeline() {
   const progressBar = document.getElementById('deploy-progress-fill');
   const btnClose = document.getElementById('modal-btn-close');
   const btnViewSite = document.getElementById('modal-btn-view-site');
+  const btnRetryPush = document.getElementById('modal-btn-retry-push');
 
   if (!form || !modal || !terminal) return;
+
+  if (btnRetryPush) {
+    btnRetryPush.addEventListener('click', async () => {
+      btnRetryPush.disabled = true;
+      btnRetryPush.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando Push...';
+      addTerminalLog('GIT_PUSH', 'INFO', 'Tentando novamente enviar push para o GitHub (origin/main)...');
+      try {
+        const res = await fetch('/api/git/push', { method: 'POST' });
+        const pData = await res.json();
+        if (pData.success) {
+          if (progressBar) progressBar.style.background = 'linear-gradient(90deg, var(--nozzle), var(--cad))';
+          addTerminalLog('GIT_PUSH', 'SUCCESS', 'Push concluído com sucesso no GitHub! Deploy iniciado no Vercel.', pData.output);
+          btnRetryPush.style.display = 'none';
+          if (btnViewSite) btnViewSite.style.display = 'inline-flex';
+        } else {
+          addTerminalLog('GIT_PUSH', 'ERROR', `Falha no push: ${pData.error}`);
+          btnRetryPush.disabled = false;
+          btnRetryPush.innerHTML = '<i class="fas fa-arrows-rotate"></i> Tentar Novamente';
+        }
+      } catch (err) {
+        addTerminalLog('NETWORK', 'ERROR', `Erro de conexão: ${err.message}`);
+        btnRetryPush.disabled = false;
+        btnRetryPush.innerHTML = '<i class="fas fa-arrows-rotate"></i> Tentar Novamente';
+      }
+    });
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -597,12 +624,22 @@ function initPublishPipeline() {
           addTerminalLog('VERCEL', 'SUCCESS', 'Repositório atualizado no GitHub! O Vercel está compilando o novo catálogo.');
         }
         if (btnViewSite) btnViewSite.style.display = 'inline-flex';
+        if (btnRetryPush) btnRetryPush.style.display = 'none';
       } else {
         if (progressBar) {
           progressBar.style.width = '100%';
           progressBar.style.background = 'var(--error)';
         }
         addTerminalLog('ERROR', 'ERROR', `Falha no cadastro: ${data.error || 'Erro desconhecido.'}`);
+        
+        // Se a falha foi especificamente no git push, exibe botão para tentar enviar novamente
+        if (data.error && (data.error.includes('git push') || data.error.includes('push') || data.error.includes('remote rejected'))) {
+          if (btnRetryPush) {
+            btnRetryPush.style.display = 'inline-flex';
+            btnRetryPush.disabled = false;
+            btnRetryPush.innerHTML = '<i class="fas fa-arrows-rotate"></i> Tentar Push Novamente';
+          }
+        }
       }
     } catch (err) {
       if (progressBar) progressBar.style.background = 'var(--error)';

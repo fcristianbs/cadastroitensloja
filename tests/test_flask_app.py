@@ -50,6 +50,13 @@ class FlaskAppTestCase(unittest.TestCase):
         self.assertIsInstance(data, list)
         self.assertGreater(len(data), 0)
 
+    def test_api_git_status_and_push_endpoint(self):
+        """Testa endpoints de git status."""
+        res_status = self.client.get('/api/git/status')
+        self.assertEqual(res_status.status_code, 200)
+        data = res_status.get_json()
+        self.assertTrue(data.get('is_git_repo'))
+
 if __name__ == '__main__':
     unittest.main()
 

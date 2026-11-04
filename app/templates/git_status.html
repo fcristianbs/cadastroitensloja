@@ -33,10 +33,14 @@
       {% endif %}
     </div>
 
-    <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem;">
+    <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
       <button type="button" class="btn btn-outline" id="btn-git-pull-manual">
         <i class="fas fa-arrows-rotate"></i>
-        <span>Executar git pull origin {{ repo_status.branch or 'main' }}</span>
+        <span>Executar git pull</span>
+      </button>
+      <button type="button" class="btn btn-primary" id="btn-git-push-manual">
+        <i class="fas fa-cloud-arrow-up"></i>
+        <span>Executar git push</span>
       </button>
       <a href="{{ repo_status.remote_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">
         <i class="fab fa-github"></i>
@@ -110,6 +114,26 @@
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Executar git pull';
+    }
+  });
+  document.getElementById('btn-git-push-manual')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-git-push-manual');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando git push...';
+    try {
+      const res = await fetch('/api/git/push', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        alert('Push concluído com sucesso:\n' + (data.output || 'Commits enviados ao GitHub.'));
+        window.location.reload();
+      } else {
+        alert('Erro ao executar git push: ' + data.error);
+      }
+    } catch (e) {
+      alert('Erro de comunicação: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-cloud-arrow-up"></i> Executar git push';
     }
   });
 </script>

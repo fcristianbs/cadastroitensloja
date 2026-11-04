@@ -256,3 +256,14 @@ def api_git_pull():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@api_bp.route('/git/push', methods=['POST'])
+def api_git_push():
+    """Executa 'git push' manualmente com retries para reenviar commits pendentes."""
+    from app.services.git_service import git_push
+    try:
+        success, output = git_push()
+        return jsonify({'success': True, 'output': output})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+

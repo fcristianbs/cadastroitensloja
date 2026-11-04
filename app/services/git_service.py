@@ -1,4 +1,5 @@
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -101,6 +102,13 @@ def get_repo_status() -> Dict[str, Any]:
         lines = [line.strip() for line in status_out.split("\n") if line.strip()]
         info["is_clean"] = len(lines) == 0
         info["uncommitted_files"] = lines
+
+    # Verifica se há commits pendentes de push (ahead of remote)
+    code, ahead_out, _ = run_git_command(["rev-list", f"{Config.GIT_REMOTE}/{info['branch']}..HEAD", "--count"])
+    try:
+        info["ahead_count"] = int(ahead_out) if code == 0 else 0
+    except (ValueError, TypeError):
+        info["ahead_count"] = 0
         
     return info
 
@@ -160,18 +168,49 @@ def git_commit(message: str) -> Tuple[bool, str, str]:
     return True, hash_out, stdout
 
 
-def git_push(branch: Optional[str] = None, remote: Optional[str] = None) -> Tuple[bool, str]:
-    """Executa 'git push origin main'."""
+def git_push(branch: Optional[str] = None, remote: Optional[str] = None, max_retries: int = 3, retry_delay: float = 2.0) -> Tuple[bool, str]:
+    """
+    Executa 'git push origin main' com mecanismo resiliente de retry automático
+    para tratar oscilações transitórias de rede e erros HTTP 500 do GitHub (Internal Server Error).
+    """
     target_branch = branch or Config.GIT_BRANCH
     target_remote = remote or Config.GIT_REMOTE
     
-    code, stdout, stderr = run_git_command(["push", target_remote, target_branch])
-    if code != 0:
-        raise GitServiceError(
-            f"Falha ao executar 'git push {target_remote} {target_branch}': {stderr or stdout}",
-            stdout=stdout,
-            stderr=stderr,
-            returncode=code
+    last_error = ""
+    for attempt in range(1, max_retries + 1):
+        # Aumenta buffer de upload para evitar timeout em imagens
+        code, stdout, stderr = run_git_command(
+            ["-c", "http.postBuffer=524288000", "push", target_remote, target_branch],
+            timeout=60
         )
-    return True, stdout or stderr
+        if code == 0:
+            return True, stdout or stderr
+            
+        combined_err = f"{stderr} {stdout}".strip()
+        last_error = combined_err
+        
+        # Verifica se é erro transitório que merece retry
+        is_transient = any(msg in combined_err for msg in [
+            "Internal Server Error",
+            "HTTP 500",
+            "502",
+            "503",
+            "504",
+            "Connection reset",
+            "Could not resolve host",
+            "Failed to connect",
+            "The remote end hung up unexpectedly"
+        ])
+        
+        if is_transient and attempt < max_retries:
+            time.sleep(retry_delay * attempt)
+            continue
+        elif not is_transient:
+            break
+
+    raise GitServiceError(
+        f"Falha ao executar 'git push {target_remote} {target_branch}': {last_error}",
+        stderr=last_error,
+        returncode=1
+    )
 

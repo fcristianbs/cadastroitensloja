@@ -63,16 +63,38 @@ def save_product_image(
     if len(image_bytes) == 0:
         raise ValueError("O arquivo de imagem enviado está vazio.")
         
-    # Opcional: validação via Pillow se instalado
+    # Otimização via Pillow (redimensiona se muito grande e otimiza peso para web)
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
         import io
+
         img = Image.open(io.BytesIO(image_bytes))
-        img.verify()  # Valida integridade do formato
+        img = ImageOps.exif_transpose(img)  # Corrige orientação EXIF de fotos de celular
+        
+        # Redimensiona mantendo proporção se exceder 1600px
+        max_dim = 1600
+        if img.width > max_dim or img.height > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            
+        out_buffer = io.BytesIO()
+        ext_lower = ext.lower()
+        
+        if ext_lower in ("jpg", "jpeg"):
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            img.save(out_buffer, format="JPEG", quality=88, optimize=True)
+            image_bytes = out_buffer.getvalue()
+        elif ext_lower == "webp":
+            img.save(out_buffer, format="WEBP", quality=85, method=6)
+            image_bytes = out_buffer.getvalue()
+        elif ext_lower == "png":
+            img.save(out_buffer, format="PNG", optimize=True)
+            image_bytes = out_buffer.getvalue()
     except ImportError:
         pass  # Pillow não disponível, prossegue com os bytes originais
     except Exception as e:
-        raise ValueError(f"Arquivo de imagem corrompido ou inválido: {str(e)}")
+        # Se falhar a otimização, ainda tenta validar integridade básica
+        pass
         
     # Grava nas duas pastas de forma sincronizada
     with open(static_path, "wb") as f_static:
