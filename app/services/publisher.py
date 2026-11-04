@@ -136,7 +136,10 @@ def run_publish_pipeline(
         commit_msg = f"feat(catalogo): cadastrar produto {nome} ({slug})"
         log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
         _, commit_hash, commit_out = git_commit(commit_msg)
-        log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
+        if "Nenhuma alteração" in commit_out:
+            log("GIT_COMMIT", "INFO", f"Conteúdo idêntico: {commit_out} (Commit: {commit_hash})")
+        else:
+            log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
 
         # Etapa 6: Git Push (se auto_push for True)
         if auto_push and Config.ENABLE_AUTO_PUSH:
