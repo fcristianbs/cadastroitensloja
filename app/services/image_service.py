@@ -114,3 +114,33 @@ def save_product_image(
         "public_path": str(public_path),
         "size_kb": round(len(image_bytes) / 1024, 1)
     }
+
+
+def rename_product_images(old_slug: str, new_slug: str) -> Optional[str]:
+    """
+    Renomeia os arquivos de imagem de um produto quando o slug é alterado durante a edição.
+    Retorna o novo web_src se renomeou com sucesso, ou None se não havia foto ou slugs idênticos.
+    """
+    if not old_slug or not new_slug or old_slug == new_slug:
+        return None
+        
+    static_dir = Config.STATIC_IMG_DIR
+    public_dir = Config.PUBLIC_IMG_DIR
+    
+    renamed_filename = None
+    for ext in ALLOWED_EXTENSIONS:
+        old_static = static_dir / f"{old_slug}.{ext}"
+        new_static = static_dir / f"{new_slug}.{ext}"
+        if old_static.exists():
+            old_static.replace(new_static)
+            renamed_filename = f"{new_slug}.{ext}"
+            
+        old_public = public_dir / f"{old_slug}.{ext}"
+        new_public = public_dir / f"{new_slug}.{ext}"
+        if old_public.exists():
+            old_public.replace(new_public)
+            renamed_filename = f"{new_slug}.{ext}"
+            
+    if renamed_filename:
+        return f"/static/img/produtos/{renamed_filename}"
+    return None

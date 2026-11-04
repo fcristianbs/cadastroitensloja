@@ -57,6 +57,14 @@ class FlaskAppTestCase(unittest.TestCase):
         data = res_status.get_json()
         self.assertTrue(data.get('is_git_repo'))
 
+    def test_editar_page(self):
+        """Testa carregamento da página de edição de um produto existente."""
+        response = self.client.get('/editar/suporte-starlink-mini-veicular')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Modo Edi', response.data)
+        self.assertIn(b'suporte-starlink-mini-veicular', response.data)
+        self.assertIn(b'Salvar Altera', response.data)
+
 if __name__ == '__main__':
     unittest.main()
 

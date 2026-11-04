@@ -111,6 +111,10 @@
             {% endif %}
           </td>
           <td style="text-align: right; white-space: nowrap;">
+            <a href="{{ url_for('main.editar_produto', slug=p.slug) }}" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem; color: var(--cad); border-color: var(--cad-border);" title="Editar produto existente">
+              <i class="fas fa-edit"></i>
+              <span>Editar</span>
+            </a>
             <a href="{{ url_for('main.index', clone=p.slug) }}" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem;" title="Usar este produto como modelo para novo cadastro">
               <i class="fas fa-copy"></i>
               <span>Duplicar</span>

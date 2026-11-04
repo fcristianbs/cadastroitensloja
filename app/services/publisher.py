@@ -13,11 +13,12 @@ from app.services.git_service import (
     git_push,
     get_repo_status
 )
-from app.services.image_service import save_product_image
+from app.services.image_service import save_product_image, rename_product_images
 from app.services.product_service import (
     build_product_record,
     generate_slug,
     insert_product,
+    update_product,
     validate_product_data,
     get_produto_by_slug
 )
@@ -78,9 +79,13 @@ def run_publish_pipeline(
         slug = generate_slug(raw_data.get("slug") or nome)
         raw_data["slug"] = slug
         
-        # Checa se o slug já existe
-        existing_prod = get_produto_by_slug(slug)
-        is_new = existing_prod is None
+        original_slug = (raw_data.get("original_slug") or "").strip()
+        is_edit = bool(original_slug)
+        existing_prod = get_produto_by_slug(original_slug) if is_edit else get_produto_by_slug(slug)
+        is_new = not is_edit
+        
+        saved_image_filename = None
+        renamed_image_filename = None
         
         # Se veio imagem pelo formulário
         if image_file and image_file.filename:
@@ -100,16 +105,33 @@ def run_publish_pipeline(
             log("IMAGE_SAVE", "SUCCESS", f"Foto salva com sucesso em 2 caminhos!", 
                 f"1. static/img/produtos/{saved_image_filename}\n2. public/static/img/produtos/{saved_image_filename}")
         else:
-            saved_image_filename = None
-            # Se for atualização de produto existente e não enviou nova imagem, preserva imagens anteriores
-            if existing_prod and existing_prod.get("imagens"):
-                raw_data["imagens"] = existing_prod.get("imagens")
+            # Não enviou imagem nova
+            if is_edit and existing_prod:
+                if slug != original_slug:
+                    # Slug foi alterado: renomeia a foto existente
+                    new_src = rename_product_images(original_slug, slug)
+                    if new_src:
+                        renamed_image_filename = new_src.split("/")[-1]
+                        raw_data["imagens"] = [{
+                            "src": new_src,
+                            "alt": (existing_prod.get("imagens") or [{}])[0].get("alt", nome),
+                            "tipo": (existing_prod.get("imagens") or [{}])[0].get("tipo", "instalada")
+                        }]
+                        log("IMAGE_RENAME", "SUCCESS", f"Foto renomeada para '{renamed_image_filename}' acompanhando o novo slug.")
+                    elif existing_prod.get("imagens"):
+                        raw_data["imagens"] = existing_prod.get("imagens")
+                elif existing_prod.get("imagens"):
+                    raw_data["imagens"] = existing_prod.get("imagens")
 
         # Constrói o registro do produto
         product_record = build_product_record(raw_data)
         
         # Validação formal das regras de negócio
-        is_valid, validation_errors = validate_product_data(product_record, is_new=is_new)
+        is_valid, validation_errors = validate_product_data(
+            product_record,
+            is_new=is_new,
+            original_slug=original_slug if is_edit else None
+        )
         if not is_valid:
             error_msg = "; ".join(validation_errors)
             log("VALIDATION", "ERROR", f"Falha na validação das regras de negócio: {error_msg}")
@@ -119,27 +141,36 @@ def run_publish_pipeline(
 
         # Etapa 3: Atualização do arquivo data/produtos.json
         log("JSON_UPDATE", "INFO", "Atualizando 'data/produtos.json'...")
-        insert_product(product_record, position="top")
-        log("JSON_UPDATE", "SUCCESS", f"Produto '{nome}' inserido com sucesso em data/produtos.json.")
+        if is_edit and original_slug:
+            update_product(original_slug, product_record)
+            log("JSON_UPDATE", "SUCCESS", f"Produto '{nome}' atualizado com sucesso em data/produtos.json.")
+        else:
+            insert_product(product_record, position="top")
+            log("JSON_UPDATE", "SUCCESS", f"Produto '{nome}' inserido com sucesso em data/produtos.json.")
 
         # Etapa 4: Git Add
         files_to_stage = ["data/produtos.json"]
         if saved_image_filename:
             files_to_stage.append(f"static/img/produtos/{saved_image_filename}")
             files_to_stage.append(f"public/static/img/produtos/{saved_image_filename}")
+        elif renamed_image_filename:
+            files_to_stage.append(f"static/img/produtos/{renamed_image_filename}")
+            files_to_stage.append(f"public/static/img/produtos/{renamed_image_filename}")
+            # Remove referências anteriores se necessário
+            for ext in ["png", "jpg", "jpeg", "webp"]:
+                files_to_stage.append(f"static/img/produtos/{original_slug}.{ext}")
+                files_to_stage.append(f"public/static/img/produtos/{original_slug}.{ext}")
             
         log("GIT_ADD", "INFO", f"Preparando arquivos para commit: {', '.join(files_to_stage)}")
         git_add(files_to_stage)
         log("GIT_ADD", "SUCCESS", "Arquivos adicionados à staging area do Git.")
 
         # Etapa 5: Git Commit
-        commit_msg = f"feat(catalogo): cadastrar produto {nome} ({slug})"
+        action_verb = "atualizar" if is_edit else "cadastrar"
+        commit_msg = f"feat(catalogo): {action_verb} produto {nome} ({slug})"
         log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
         _, commit_hash, commit_out = git_commit(commit_msg)
-        if "Nenhuma alteração" in commit_out:
-            log("GIT_COMMIT", "INFO", f"Conteúdo idêntico: {commit_out} (Commit: {commit_hash})")
-        else:
-            log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
+        log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
 
         # Etapa 6: Git Push (se auto_push for True)
         if auto_push and Config.ENABLE_AUTO_PUSH:

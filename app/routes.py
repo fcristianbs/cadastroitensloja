@@ -40,7 +40,34 @@ def index():
         categorias=CATEGORIAS_PERMITIDAS,
         materiais=MATERIAIS_COMUNS,
         clone_data=clone_data,
+        edit_data=None,
+        is_edit=False,
         active_tab='cadastrar'
+    )
+
+
+@main_bp.route('/editar/<slug>')
+def editar_produto(slug):
+    """Página de edição de um produto existente do catálogo."""
+    produtos = load_produtos()
+    repo_status = get_repo_status()
+    produto = get_produto_by_slug(slug)
+    
+    if not produto:
+        flash(f"Produto com slug '{slug}' não foi encontrado no catálogo.", 'danger')
+        return redirect(url_for('main.produtos_list'))
+
+    return render_template(
+        'index.html',
+        produtos=produtos,
+        repo_status=repo_status,
+        categorias=CATEGORIAS_PERMITIDAS,
+        materiais=MATERIAIS_COMUNS,
+        clone_data=None,
+        edit_data=produto,
+        is_edit=True,
+        original_slug=slug,
+        active_tab='produtos'
     )
 
 
@@ -100,6 +127,8 @@ def cadastrar_produto():
         'mercadoLivreUrl': request.form.get('mercadoLivreUrl', '').strip() or None,
         'imagem_alt': request.form.get('imagem_alt', '').strip(),
         'imagem_tipo': request.form.get('imagem_tipo', 'instalada').strip(),
+        'original_slug': request.form.get('original_slug', '').strip(),
+        'is_edit': bool(request.form.get('original_slug', '').strip()),
     }
 
     # Processamento de Specs

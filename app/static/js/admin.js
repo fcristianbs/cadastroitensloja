@@ -38,10 +38,16 @@ function initSlugGenerator() {
   const nomeInput = document.getElementById('input-nome');
   const slugInput = document.getElementById('input-slug');
   const slugBadge = document.getElementById('slug-badge');
+  const origSlugInput = document.getElementById('input-original-slug');
   if (!nomeInput || !slugInput) return;
 
-  let userEditedSlug = slugInput.value.trim().length > 0;
+  const isEditMode = !!origSlugInput && origSlugInput.value.trim().length > 0;
+  let userEditedSlug = isEditMode || slugInput.value.trim().length > 0;
   let debounceTimeout = null;
+
+  if (isEditMode && slugInput.value.trim()) {
+    checkSlugAvailability(slugInput.value.trim());
+  }
 
   nomeInput.addEventListener('input', () => {
     if (!userEditedSlug) {
@@ -62,6 +68,15 @@ function initSlugGenerator() {
   function checkSlugAvailability(slug) {
     if (!slug) {
       if (slugBadge) slugBadge.style.display = 'none';
+      return;
+    }
+
+    if (isEditMode && origSlugInput && slug === origSlugInput.value) {
+      if (slugBadge) {
+        slugBadge.style.display = 'inline-block';
+        slugBadge.className = 'input-badge valid';
+        slugBadge.textContent = 'SLUG ATUAL';
+      }
       return;
     }
 

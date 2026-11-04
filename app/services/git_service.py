@@ -152,18 +152,10 @@ def git_add(file_paths: List[str]) -> Tuple[bool, str]:
 def git_commit(message: str) -> Tuple[bool, str, str]:
     """
     Executa 'git commit -m <message>'.
-    Trata graciosamente o caso em que a working tree já está limpa (nothing to commit),
-    evitando que edições idênticas quebrem o fluxo.
     Retorna (sucesso, commit_hash, output).
     """
     code, stdout, stderr = run_git_command(["commit", "-m", message])
     if code != 0:
-        combined = f"{stderr} {stdout}".strip()
-        if "nothing to commit" in combined or "nada a submeter" in combined:
-            # Não há alterações pendentes porque o conteúdo já foi commitado
-            _, hash_out, _ = run_git_command(["rev-parse", "--short", "HEAD"])
-            return True, hash_out, "Nenhuma alteração pendente (os dados já estavam salvos e commitados)."
-            
         raise GitServiceError(
             f"Falha ao criar commit: {stderr or stdout}",
             stdout=stdout,

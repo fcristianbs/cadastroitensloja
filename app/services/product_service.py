@@ -92,10 +92,10 @@ def get_existing_slugs() -> Set[str]:
     return {p.get("slug") for p in load_produtos() if p.get("slug")}
 
 
-def validate_product_data(data: Dict[str, Any], is_new: bool = True) -> Tuple[bool, List[str]]:
+def validate_product_data(data: Dict[str, Any], is_new: bool = True, original_slug: Optional[str] = None) -> Tuple[bool, List[str]]:
     """
     Valida rigorosamente os dados do produto segundo as regras de negócio:
-    - RN01: Slug válido e único (se is_new=True).
+    - RN01: Slug válido e único.
     - RN02: Categoria deve ser uma das 4 permitidas.
     - RN05: Se uso == 'externo', material DEVE ser PETG-UV, PETG ou ASA (PLA proibido).
     - Formato de preço, specs, imagens e campos obrigatórios.
@@ -113,10 +113,12 @@ def validate_product_data(data: Dict[str, Any], is_new: bool = True) -> Tuple[bo
         errors.append("O campo 'Slug' é obrigatório.")
     elif not re.match(r"^[a-z0-9]+(?:-[a-z0-9]+)*$", slug):
         errors.append("O Slug deve conter apenas letras minúsculas, números e hífens (ex: 'suporte-starlink-mini').")
-    elif is_new:
+    else:
         existing_slugs = get_existing_slugs()
-        if slug in existing_slugs:
+        if is_new and slug in existing_slugs:
             errors.append(f"O slug '{slug}' já está cadastrado em outro produto. Escolha um slug único.")
+        elif not is_new and original_slug and slug != original_slug and slug in existing_slugs:
+            errors.append(f"O novo slug '{slug}' já está em uso por outro produto no catálogo.")
             
     # Validação da Categoria (RN02)
     categoria = (data.get("categoria") or "").strip()
@@ -342,6 +344,28 @@ def insert_product(product_record: Dict[str, Any], position: str = "top") -> Lis
         produtos.insert(0, product_record)
     else:
         produtos.append(product_record)
+        
+    save_produtos(produtos)
+    return produtos
+
+
+def update_product(original_slug: str, product_record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Atualiza um produto existente preservando sua posição original no array de data/produtos.json.
+    Se o slug mudou, substitui a entrada anterior pelo novo registro.
+    """
+    produtos = load_produtos()
+    updated = False
+    
+    for i, p in enumerate(produtos):
+        if p.get("slug") == original_slug:
+            produtos[i] = product_record
+            updated = True
+            break
+            
+    if not updated:
+        # Fallback: insere no topo se não encontrou o slug anterior
+        produtos.insert(0, product_record)
         
     save_produtos(produtos)
     return produtos
