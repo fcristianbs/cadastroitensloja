@@ -57,6 +57,18 @@ class FlaskAppTestCase(unittest.TestCase):
         data = res_status.get_json()
         self.assertTrue(data.get('is_git_repo'))
 
+    def test_api_categorias(self):
+        """Testa endpoint de categorias dinâmicas em JSON."""
+        res = self.client.get('/api/categorias')
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertIsInstance(data, list)
+        self.assertGreater(len(data), 0)
+        slugs = [c.get('slug') for c in data]
+        self.assertIn('engenharia', slugs)
+        self.assertIn('setup-games', slugs)
+        self.assertIn('presentes', slugs)
+
     def test_editar_page(self):
         """Testa carregamento da página de edição de um produto existente."""
         response = self.client.get('/editar/suporte-starlink-mini-veicular')

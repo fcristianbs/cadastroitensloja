@@ -3,7 +3,8 @@ from app.services.product_service import (
     generate_slug,
     validate_product_data,
     build_product_record,
-    CATEGORIAS_PERMITIDAS
+    load_categorias,
+    get_allowed_category_slugs
 )
 
 class ProductServiceTestCase(unittest.TestCase):
@@ -28,12 +29,16 @@ class ProductServiceTestCase(unittest.TestCase):
         )
 
     def test_rn02_categoria_permitida(self):
-        """Testa RN02: Apenas categorias permitidas são aceitas."""
-        for cat in CATEGORIAS_PERMITIDAS:
+        """Testa RN02: Apenas categorias existentes na taxonomia dinâmica são aceitas."""
+        allowed_cats = get_allowed_category_slugs()
+        self.assertGreater(len(allowed_cats), 0, "Deveria carregar pelo menos uma categoria dinâmica.")
+
+        for cat in allowed_cats:
             data = {
                 "nome": "Produto Teste",
                 "slug": "produto-teste",
                 "categoria": cat,
+                "subcategoria": "geral",
                 "resumo": "Resumo teste",
                 "descricao": "Descricao teste",
                 "uso": "interno",
@@ -41,13 +46,14 @@ class ProductServiceTestCase(unittest.TestCase):
                 "imagens": [{"src": "/static/img/teste.png"}]
             }
             valid, errors = validate_product_data(data, is_new=False)
-            self.assertTrue(valid, f"Categoria válida {cat} falhou: {errors}")
+            self.assertTrue(valid, f"Categoria dinâmica {cat} falhou: {errors}")
 
-        # Categoria inválida
+        # Categoria inválida que não existe em data/categorias.json
         data_invalida = {
             "nome": "Produto Inválido",
             "slug": "produto-invalido",
-            "categoria": "eletronicos",
+            "categoria": "eletronicos-inexistentes",
+            "subcategoria": "geral",
             "resumo": "Resumo",
             "descricao": "Desc",
             "uso": "interno",
@@ -56,7 +62,7 @@ class ProductServiceTestCase(unittest.TestCase):
         }
         valid, errors = validate_product_data(data_invalida, is_new=False)
         self.assertFalse(valid)
-        self.assertTrue(any("Categoria 'eletronicos' inválida" in e for e in errors))
+        self.assertTrue(any("Categoria 'eletronicos-inexistentes' inválida" in e for e in errors))
 
     def test_rn05_material_vs_uso(self):
         """Testa RN05: Regra de Material vs Uso (PLA proibido em uso externo)."""
@@ -65,6 +71,7 @@ class ProductServiceTestCase(unittest.TestCase):
             "nome": "Suporte Externo",
             "slug": "suporte-externo",
             "categoria": "engenharia",
+            "subcategoria": "suportes",
             "resumo": "Resumo",
             "descricao": "Desc",
             "uso": "externo",
@@ -80,6 +87,7 @@ class ProductServiceTestCase(unittest.TestCase):
             "nome": "Suporte Externo UV",
             "slug": "suporte-externo-uv",
             "categoria": "engenharia",
+            "subcategoria": "suportes",
             "resumo": "Resumo",
             "descricao": "Desc",
             "uso": "externo",
@@ -94,6 +102,7 @@ class ProductServiceTestCase(unittest.TestCase):
             "nome": "Suporte Externo ASA",
             "slug": "suporte-externo-asa",
             "categoria": "engenharia",
+            "subcategoria": "suportes",
             "resumo": "Resumo",
             "descricao": "Desc",
             "uso": "externo",
@@ -108,6 +117,7 @@ class ProductServiceTestCase(unittest.TestCase):
             "nome": "Suporte Interno PLA",
             "slug": "suporte-interno-pla",
             "categoria": "gadgets",
+            "subcategoria": "cases",
             "resumo": "Resumo",
             "descricao": "Desc",
             "uso": "interno",

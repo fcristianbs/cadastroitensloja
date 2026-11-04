@@ -3,11 +3,53 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+import requests
 from app.config import Config
 
-CATEGORIAS_PERMITIDAS = ["engenharia", "casa", "gadgets", "figures"]
 MATERIAIS_EXTERNO_PERMITIDOS = {"PETG-UV", "PETG", "ASA"}
 MATERIAIS_COMUNS = ["PETG-UV", "PETG", "ASA", "PLA", "TPU", "ABS"]
+
+def load_categorias() -> List[Dict[str, Any]]:
+    """
+    Carrega dinamicamente a taxonomia de categorias e subcategorias
+    a partir de data/categorias.json do repositório local.
+    Faz fallback para a API remota da Vercel caso o arquivo local não esteja acessível.
+    """
+    path = Config.CATEGORIAS_JSON_PATH
+    if path and path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and len(data) > 0:
+                    return data
+        except Exception as e:
+            print(f"[AVISO] Falha ao ler categorias.json local: {e}")
+
+    # Fallback para API remota
+    try:
+        url = f"{Config.VERCEL_DEPLOY_URL.rstrip('/')}/api/categorias"
+        res = requests.get(url, timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            if isinstance(data, list) and len(data) > 0:
+                return data
+    except Exception:
+        pass
+
+    return []
+
+
+def get_allowed_category_slugs() -> Set[str]:
+    """Retorna os slugs de todas as categorias cadastradas no catálogo."""
+    return {c.get("slug") for c in load_categorias() if c.get("slug")}
+
+
+def get_categoria_by_slug(cat_slug: str) -> Optional[Dict[str, Any]]:
+    """Busca uma categoria específica pelo seu slug."""
+    for cat in load_categorias():
+        if cat.get("slug") == cat_slug:
+            return cat
+    return None
 
 def generate_slug(text: str) -> str:
     """
@@ -120,12 +162,19 @@ def validate_product_data(data: Dict[str, Any], is_new: bool = True, original_sl
         elif not is_new and original_slug and slug != original_slug and slug in existing_slugs:
             errors.append(f"O novo slug '{slug}' já está em uso por outro produto no catálogo.")
             
-    # Validação da Categoria (RN02)
+    # Validação da Categoria (RN02 - Dinâmica)
     categoria = (data.get("categoria") or "").strip()
     if not categoria:
         errors.append("O campo 'Categoria' é obrigatório.")
-    elif categoria not in CATEGORIAS_PERMITIDAS:
-        errors.append(f"Categoria '{categoria}' inválida. Categorias permitidas: {', '.join(CATEGORIAS_PERMITIDAS)}.")
+    else:
+        allowed_cats = get_allowed_category_slugs()
+        if allowed_cats and categoria not in allowed_cats:
+            errors.append(f"Categoria '{categoria}' inválida. Categorias disponíveis no catálogo: {', '.join(sorted(allowed_cats))}.")
+
+    # Validação da Subcategoria
+    subcategoria = (data.get("subcategoria") or "").strip()
+    if not subcategoria:
+        errors.append("O campo 'Subcategoria' é obrigatório.")
         
     # Validação de Resumo e Descrição
     resumo = (data.get("resumo") or "").strip()

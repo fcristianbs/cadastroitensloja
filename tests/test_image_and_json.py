@@ -24,6 +24,7 @@ class ImageAndJsonTestCase(unittest.TestCase):
         # Cria estrutura de pastas
         (self.temp_dir / 'data').mkdir(parents=True, exist_ok=True)
         (self.temp_dir / 'data' / 'produtos.json').write_text("[]", encoding="utf-8")
+        (self.temp_dir / 'data' / 'categorias.json').write_text('[{"slug": "engenharia", "nome": "Engenharia", "subcategorias": [{"slug": "starlink", "nome": "Starlink"}]}]', encoding="utf-8")
 
     def tearDown(self):
         Config.reload_config(str(self.orig_repo))

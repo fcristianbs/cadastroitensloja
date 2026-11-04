@@ -66,17 +66,20 @@
         <div class="form-group">
           <label class="form-label" for="select-categoria">Categoria <span class="required">*</span></label>
           <select id="select-categoria" name="categoria" class="form-control" required>
+            <option value="">Selecione uma categoria...</option>
             {% for cat in categorias %}
-              <option value="{{ cat }}" {% if item and item.categoria == cat %}selected{% endif %}>{{ cat|capitalize }}</option>
+              <option value="{{ cat.slug }}" {% if item and item.categoria == cat.slug %}selected{% endif %}>{{ cat.nome }}</option>
             {% endfor %}
           </select>
-          <span class="form-hint">Exclusivas: engenharia, casa, gadgets, figures.</span>
+          <span class="form-hint">Carregada dinamicamente do catálogo.</span>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="input-subcategoria">Subcategoria</label>
-          <input type="text" id="input-subcategoria" name="subcategoria" class="form-control" placeholder="ex: starlink, suportes, reposicao" value="{{ item.subcategoria if item else 'starlink' }}">
-          <span class="form-hint">Agrupa peças no filtro do catálogo.</span>
+          <label class="form-label" for="select-subcategoria">Subcategoria <span class="required">*</span></label>
+          <select id="select-subcategoria" name="subcategoria" class="form-control" required {% if not item or not item.categoria %}disabled{% endif %}>
+            <option value="">{% if item and item.categoria %}Carregando subcategorias...{% else %}Selecione a categoria primeiro...{% endif %}</option>
+          </select>
+          <span class="form-hint">Dependente da categoria selecionada.</span>
         </div>
       </div>
     </div>
@@ -543,5 +546,11 @@
     </div>
   </div>
 </div>
+<!-- Dados de Categorias e Subcategorias para o Javascript -->
+<script id="dados-categorias" type="application/json">
+  {{ categorias|tojson }}
+</script>
+<input type="hidden" id="initial-category" value="{{ item.categoria if item else '' }}">
+<input type="hidden" id="initial-subcategory" value="{{ item.subcategoria if item else '' }}">
 {% endblock %}
 

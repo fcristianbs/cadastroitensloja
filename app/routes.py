@@ -15,7 +15,7 @@ from app.services.product_service import (
     load_produtos,
     get_produto_by_slug,
     get_existing_slugs,
-    CATEGORIAS_PERMITIDAS,
+    load_categorias,
     MATERIAIS_COMUNS
 )
 from app.services.publisher import run_publish_pipeline
@@ -28,6 +28,7 @@ def index():
     """Página principal: Formulário de cadastro de produtos com live preview."""
     produtos = load_produtos()
     repo_status = get_repo_status()
+    categorias = load_categorias()
     
     # Produto modelo (se o usuário clicou em 'Usar como Modelo' na lista de produtos)
     clone_slug = request.args.get('clone')
@@ -37,7 +38,7 @@ def index():
         'index.html',
         produtos=produtos,
         repo_status=repo_status,
-        categorias=CATEGORIAS_PERMITIDAS,
+        categorias=categorias,
         materiais=MATERIAIS_COMUNS,
         clone_data=clone_data,
         edit_data=None,
@@ -52,6 +53,7 @@ def editar_produto(slug):
     produtos = load_produtos()
     repo_status = get_repo_status()
     produto = get_produto_by_slug(slug)
+    categorias = load_categorias()
     
     if not produto:
         flash(f"Produto com slug '{slug}' não foi encontrado no catálogo.", 'danger')
@@ -61,7 +63,7 @@ def editar_produto(slug):
         'index.html',
         produtos=produtos,
         repo_status=repo_status,
-        categorias=CATEGORIAS_PERMITIDAS,
+        categorias=categorias,
         materiais=MATERIAIS_COMUNS,
         clone_data=None,
         edit_data=produto,
@@ -75,6 +77,7 @@ def editar_produto(slug):
 def produtos_list():
     """Página de listagem e consulta dos produtos já cadastrados em data/produtos.json."""
     produtos = load_produtos()
+    categorias = load_categorias()
     total = len(produtos)
     destaques = sum(1 for p in produtos if p.get('destaque'))
     
@@ -87,6 +90,7 @@ def produtos_list():
     return render_template(
         'produtos.html',
         produtos=produtos,
+        categorias=categorias,
         total=total,
         destaques=destaques,
         categorias_count=categorias_count,
@@ -247,6 +251,12 @@ def cadastrar_produto():
 # ==============================================================================
 # API Endpoints
 # ==============================================================================
+
+@api_bp.route('/categorias', methods=['GET'])
+def api_get_categorias():
+    """Retorna todas as categorias e subcategorias carregadas dinamicamente."""
+    return jsonify(load_categorias())
+
 
 @api_bp.route('/produtos', methods=['GET'])
 def api_get_produtos():

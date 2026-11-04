@@ -44,10 +44,9 @@
     </div>
     <select id="filtro-categoria" class="form-control" style="width: 200px;">
       <option value="">Todas as Categorias</option>
-      <option value="engenharia">Engenharia</option>
-      <option value="casa">Casa</option>
-      <option value="gadgets">Gadgets</option>
-      <option value="figures">Figures</option>
+      {% for cat in categorias %}
+        <option value="{{ cat.slug }}">{{ cat.nome }}</option>
+      {% endfor %}
     </select>
   </div>
 </div>

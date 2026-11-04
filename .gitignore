@@ -26,3 +26,9 @@ temp_uploads/
 .DS_Store
 Thumbs.db
 
+
+# Build do executável
+build/
+dist/
+*.spec
+servidor.log

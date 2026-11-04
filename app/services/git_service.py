@@ -34,7 +34,9 @@ def run_git_command(args: List[str], cwd: Optional[Path] = None, timeout: int = 
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
-            shell=False
+            shell=False,
+            # Evita abrir janelas de console do git quando rodando como .exe
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
         )
         return process.returncode, process.stdout.strip(), process.stderr.strip()
     except subprocess.TimeoutExpired:

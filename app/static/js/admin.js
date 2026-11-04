@@ -4,6 +4,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  initCategoryCascading();
   initSlugGenerator();
   initMaterialUsoRule();
   initPhotoDropzone();
@@ -15,6 +16,90 @@ document.addEventListener('DOMContentLoaded', () => {
   initPublishPipeline();
   initGitPullAction();
 });
+
+// =============================================================================
+// 0. Seletor em Cascata de Categorias e Subcategorias (Dinâmico)
+// =============================================================================
+function initCategoryCascading() {
+  const catSelect = document.getElementById('select-categoria');
+  const subSelect = document.getElementById('select-subcategoria');
+  const rawDataEl = document.getElementById('dados-categorias');
+  const initialCatEl = document.getElementById('initial-category');
+  const initialSubEl = document.getElementById('initial-subcategory');
+
+  if (!catSelect || !subSelect) return;
+
+  let categorias = [];
+  try {
+    if (rawDataEl && rawDataEl.textContent.trim()) {
+      categorias = JSON.parse(rawDataEl.textContent);
+    }
+  } catch (e) {
+    console.error('Falha ao processar categorias embutidas:', e);
+  }
+
+  function renderSubcategories(catSlug, preselectedSub = '') {
+    subSelect.innerHTML = '';
+
+    if (!catSlug) {
+      subSelect.innerHTML = '<option value="">Selecione a categoria primeiro...</option>';
+      subSelect.disabled = true;
+      return;
+    }
+
+    const catObj = categorias.find(c => c.slug === catSlug);
+
+    if (catObj && Array.isArray(catObj.subcategorias) && catObj.subcategorias.length > 0) {
+      subSelect.disabled = false;
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Selecione uma subcategoria...';
+      subSelect.appendChild(placeholder);
+
+      catObj.subcategorias.forEach(sub => {
+        const slug = typeof sub === 'object' ? sub.slug : sub;
+        const nome = typeof sub === 'object' ? sub.nome : sub;
+        const desc = typeof sub === 'object' && sub.descricao ? sub.descricao : '';
+
+        const opt = document.createElement('option');
+        opt.value = slug;
+        opt.textContent = nome;
+        if (desc) opt.title = desc;
+
+        if (preselectedSub && slug === preselectedSub) {
+          opt.selected = true;
+        }
+
+        subSelect.appendChild(opt);
+      });
+    } else {
+      subSelect.disabled = false;
+      const opt = document.createElement('option');
+      opt.value = 'geral';
+      opt.textContent = 'Geral';
+      opt.selected = true;
+      subSelect.appendChild(opt);
+    }
+  }
+
+  catSelect.addEventListener('change', () => {
+    renderSubcategories(catSelect.value);
+    document.dispatchEvent(new CustomEvent('product-category-updated'));
+  });
+
+  subSelect.addEventListener('change', () => {
+    document.dispatchEvent(new CustomEvent('product-category-updated'));
+  });
+
+  // Carregamento inicial (em caso de edição ou clonagem)
+  const initCat = (initialCatEl ? initialCatEl.value : '') || catSelect.value;
+  const initSub = initialSubEl ? initialSubEl.value : '';
+
+  if (initCat) {
+    catSelect.value = initCat;
+    renderSubcategories(initCat, initSub);
+  }
+}
 
 // =============================================================================
 // 1. Slug Generator & Unicidade
@@ -410,7 +495,7 @@ function initInstalacaoBuilder() {
 function initLivePreview() {
   const nomeInput = document.getElementById('input-nome');
   const catSelect = document.getElementById('select-categoria');
-  const subcatInput = document.getElementById('input-subcategoria');
+  const subSelect = document.getElementById('select-subcategoria');
   const resumoInput = document.getElementById('input-resumo');
   const precoInput = document.getElementById('input-preco');
   const parceladoInput = document.getElementById('input-preco-parcelado');
@@ -433,8 +518,9 @@ function initLivePreview() {
   function updatePreview() {
     if (prevTitle && nomeInput) prevTitle.textContent = nomeInput.value.trim() || 'Nome do Produto';
     if (prevCat && catSelect) {
-      const sub = subcatInput ? subcatInput.value.trim() : '';
-      prevCat.textContent = `${catSelect.value || 'ENGENHARIA'} ${sub ? '· ' + sub : ''}`;
+      const catText = catSelect.selectedIndex >= 0 && catSelect.value ? catSelect.options[catSelect.selectedIndex].text : 'ENGENHARIA';
+      const subText = subSelect && subSelect.selectedIndex >= 0 && subSelect.value ? subSelect.options[subSelect.selectedIndex].text : '';
+      prevCat.textContent = `${catText.toUpperCase()} ${subText ? '· ' + subText.toUpperCase() : ''}`;
     }
     if (prevSummary && resumoInput) prevSummary.textContent = resumoInput.value.trim() || 'Resumo curto destacando a utilidade da peça.';
 
@@ -485,9 +571,14 @@ function initLivePreview() {
     }
   }
 
-  [nomeInput, catSelect, subcatInput, resumoInput, precoInput, parceladoInput, seloInput, usoSelect, materialInput].forEach(inp => {
-    if (inp) inp.addEventListener('input', updatePreview);
+  [nomeInput, catSelect, subSelect, resumoInput, precoInput, parceladoInput, seloInput, usoSelect, materialInput].forEach(inp => {
+    if (inp) {
+      inp.addEventListener('input', updatePreview);
+      inp.addEventListener('change', updatePreview);
+    }
   });
+
+  document.addEventListener('product-category-updated', updatePreview);
 
   document.addEventListener('product-image-updated', (e) => {
     if (prevImg && prevPlaceholder) {

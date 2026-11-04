@@ -1,8 +1,13 @@
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Quando empacotado (PyInstaller), o .env fica ao lado do executável
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Carrega variáveis do arquivo .env
 env_file = BASE_DIR / '.env'
