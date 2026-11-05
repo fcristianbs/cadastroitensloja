@@ -148,6 +148,56 @@ class FlaskAppTestCase(unittest.TestCase):
         self.assertTrue(res_tog.get_json()['success'])
         mock_toggle.assert_called_once_with('item-x', auto_push=True)
 
+    @patch('app.routes.get_pending_batch_status')
+    def test_api_batch_status_endpoint(self, mock_batch_status):
+        """Testa endpoint GET /api/batch/status."""
+        mock_batch_status.return_value = {
+            'has_pending': True,
+            'total_pending': 2,
+            'novos': ['novo-1'],
+            'editados': ['edit-1'],
+            'removidos': [],
+            'summary_text': '2 itens pendentes'
+        }
+        res = self.client.get('/api/batch/status')
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data['has_pending'])
+        self.assertEqual(data['total_pending'], 2)
+
+    @patch('app.routes.run_batch_publish_pipeline')
+    def test_api_batch_publish_endpoint(self, mock_publish_batch):
+        """Testa endpoint POST /api/batch/publish."""
+        mock_publish_batch.return_value = {
+            'success': True,
+            'commit_hash': 'abc1234',
+            'commit_message': 'feat(catalogo): publicar lote com 2 produtos cadastrados/atualizados',
+            'pushed': True,
+            'logs': [{'step': 'BATCH_DEPLOY', 'status': 'SUCCESS', 'message': 'Publicado'}]
+        }
+        res = self.client.post('/api/batch/publish')
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['commit_hash'], 'abc1234')
+
+    @patch('app.routes.discard_pending_changes')
+    def test_api_batch_discard_endpoint(self, mock_discard):
+        """Testa endpoint POST /api/batch/discard."""
+        mock_discard.return_value = (True, 'Rascunhos descartados com sucesso.')
+        res = self.client.post('/api/batch/discard')
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data['success'])
+
+    def test_sticky_batch_bar_in_base_template(self):
+        """Verifica se o componente do Sticky Batch Bar e modal de descarte estão em base.html."""
+        res = self.client.get('/')
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b'sticky-batch-bar', res.data)
+        self.assertIn(b'btn-batch-publish', res.data)
+        self.assertIn(b'modal-confirm-discard', res.data)
+
 if __name__ == '__main__':
     unittest.main()
 

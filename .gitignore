@@ -31,4 +31,5 @@ Thumbs.db
 build/
 dist/
 *.spec
+*.zip
 servidor.log

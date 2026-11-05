@@ -16,16 +16,39 @@ from app.services.product_service import (
     get_produto_by_slug,
     get_existing_slugs,
     load_categorias,
-    MATERIAIS_COMUNS
+    MATERIAIS_COMUNS,
+    get_pending_batch_status,
+    discard_pending_changes
 )
 from app.services.publisher import (
     run_publish_pipeline,
     run_delete_pipeline,
-    run_toggle_esgotado_pipeline
+    run_toggle_esgotado_pipeline,
+    run_batch_publish_pipeline
 )
 
 main_bp = Blueprint('main', __name__)
 api_bp = Blueprint('api', __name__)
+
+
+@main_bp.app_context_processor
+def inject_global_vars():
+    """Injeta status do lote pendente e informações globais em todos os templates."""
+    try:
+        batch_status = get_pending_batch_status()
+    except Exception:
+        batch_status = {
+            "has_pending": False,
+            "total_pending": 0,
+            "summary_text": "Catálogo sincronizado com a Vercel",
+            "novos": [],
+            "editados": [],
+            "removidos": [],
+            "all_pending_items": []
+        }
+    return {
+        'batch_status': batch_status
+    }
 
 @main_bp.route('/')
 def index():
@@ -141,6 +164,28 @@ def cadastrar_produto():
         'is_edit': bool(request.form.get('original_slug', '').strip()),
     }
 
+    # Processamento de Categorias (Múltiplas)
+    categorias_json = request.form.get('categorias_json')
+    if categorias_json:
+        try:
+            raw_data['categorias'] = json.loads(categorias_json)
+        except Exception:
+            raw_data['categorias'] = []
+    else:
+        cats_list = request.form.getlist('categorias[]')
+        raw_data['categorias'] = [c.strip() for c in cats_list if c.strip()]
+
+    # Processamento de Subcategorias (Múltiplas)
+    subcategorias_json = request.form.get('subcategorias_json')
+    if subcategorias_json:
+        try:
+            raw_data['subcategorias'] = json.loads(subcategorias_json)
+        except Exception:
+            raw_data['subcategorias'] = []
+    else:
+        subs_list = request.form.getlist('subcategorias[]')
+        raw_data['subcategorias'] = [s.strip() for s in subs_list if s.strip()]
+
     # Processamento de Specs
     specs_json = request.form.get('specs_json')
     if specs_json:
@@ -228,8 +273,8 @@ def cadastrar_produto():
     # Relacionados
     raw_data['relacionados'] = request.form.getlist('relacionados[]')
     
-    # Auto Push
-    auto_push = request.form.get('auto_push', 'true').lower() in ('true', '1', 'on', 'yes')
+    # Auto Push (padrão FALSE para modo fila local em lote)
+    auto_push = request.form.get('auto_push', 'false').lower() in ('true', '1', 'on', 'yes')
 
     # Foto
     foto_file = request.files.get('foto')
@@ -247,7 +292,10 @@ def cadastrar_produto():
         return jsonify(pipeline_result)
 
     if pipeline_result['success']:
-        flash(f"Produto '{raw_data.get('nome')}' cadastrado com sucesso! Commit: {pipeline_result.get('commit_hash')}", 'success')
+        if pipeline_result.get('pushed'):
+            flash(f"Produto '{raw_data.get('nome')}' publicado com sucesso na Vercel! Commit: {pipeline_result.get('commit_hash')}", 'success')
+        else:
+            flash(f"Produto '{raw_data.get('nome')}' salvo no catálogo local! Alteração pronta para publicação em lote.", 'success')
         return redirect(url_for('main.produtos_list'))
     else:
         flash(f"Erro ao cadastrar produto: {pipeline_result.get('error')}", 'danger')
@@ -256,8 +304,8 @@ def cadastrar_produto():
 
 @main_bp.route('/produtos/<slug>/excluir', methods=['POST'])
 def excluir_produto(slug):
-    """Exclui o produto do catálogo e executa commit e push."""
-    auto_push = request.form.get('auto_push', 'true').lower() in ('true', '1', 'on', 'yes')
+    """Exclui o produto do catálogo local (e opcionalmente executa push)."""
+    auto_push = request.form.get('auto_push', 'false').lower() in ('true', '1', 'on', 'yes')
     result = run_delete_pipeline(slug, auto_push=auto_push)
     
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
@@ -265,7 +313,10 @@ def excluir_produto(slug):
         return jsonify(result)
         
     if result['success']:
-        flash(f"Produto '{slug}' excluído do catálogo com sucesso! Commit: {result.get('commit_hash')}", 'success')
+        if result.get('pushed'):
+            flash(f"Produto '{slug}' excluído do catálogo e publicado na Vercel! Commit: {result.get('commit_hash')}", 'success')
+        else:
+            flash(f"Produto '{slug}' excluído localmente! Exclusão adicionada à fila de publicação.", 'success')
     else:
         flash(f"Erro ao excluir produto: {result.get('error')}", 'danger')
         
@@ -274,8 +325,8 @@ def excluir_produto(slug):
 
 @main_bp.route('/produtos/<slug>/toggle-esgotado', methods=['POST'])
 def alternar_esgotado_produto(slug):
-    """Alterna o status de esgotado do produto no catálogo e executa commit e push."""
-    auto_push = request.form.get('auto_push', 'true').lower() in ('true', '1', 'on', 'yes')
+    """Alterna o status de esgotado do produto no catálogo local (e opcionalmente executa push)."""
+    auto_push = request.form.get('auto_push', 'false').lower() in ('true', '1', 'on', 'yes')
     result = run_toggle_esgotado_pipeline(slug, auto_push=auto_push)
     
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
@@ -284,9 +335,45 @@ def alternar_esgotado_produto(slug):
         
     if result['success']:
         status_txt = "marcado como ESGOTADO" if result.get('esgotado') else "REATIVADO no catálogo"
-        flash(f"Produto '{slug}' foi {status_txt}! Commit: {result.get('commit_hash')}", 'success')
+        if result.get('pushed'):
+            flash(f"Produto '{slug}' foi {status_txt} e publicado na Vercel! Commit: {result.get('commit_hash')}", 'success')
+        else:
+            flash(f"Produto '{slug}' foi {status_txt} localmente! Alteração adicionada à fila de publicação.", 'success')
     else:
         flash(f"Erro ao alterar status: {result.get('error')}", 'danger')
+        
+    return redirect(url_for('main.produtos_list'))
+
+
+@main_bp.route('/publicar-lote', methods=['POST'])
+def publicar_lote():
+    """Consolida e publica todas as alterações locais na Vercel em um único deploy."""
+    result = run_batch_publish_pipeline()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    if is_ajax:
+        return jsonify(result)
+        
+    if result['success']:
+        flash(f"Lote publicado com sucesso na Vercel! Commit: {result.get('commit_hash')}", 'success')
+    else:
+        flash(f"Erro ao publicar lote: {result.get('error')}", 'danger')
+        
+    return redirect(url_for('main.produtos_list'))
+
+
+@main_bp.route('/descartar-lote', methods=['POST'])
+def descartar_lote():
+    """Descarta todas as alterações locais pendentes e reverte para a versão de produção."""
+    from app.services.product_service import discard_pending_changes
+    success, msg = discard_pending_changes()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    if is_ajax:
+        return jsonify({'success': success, 'message': msg})
+        
+    if success:
+        flash("Todas as alterações locais pendentes foram descartadas. O catálogo voltou à versão de produção.", 'info')
+    else:
+        flash(f"Erro ao descartar alterações: {msg}", 'danger')
         
     return redirect(url_for('main.produtos_list'))
 
@@ -309,18 +396,37 @@ def api_get_produtos():
 
 @api_bp.route('/produtos/<slug>/excluir', methods=['POST'])
 def api_excluir_produto(slug):
-    """API para exclusão de produto com pipeline Git."""
+    """API para exclusão de produto."""
     data = request.get_json(silent=True) or {}
-    auto_push = data.get('auto_push', True)
+    auto_push = data.get('auto_push', False)
     return jsonify(run_delete_pipeline(slug, auto_push=auto_push))
 
 
 @api_bp.route('/produtos/<slug>/toggle-esgotado', methods=['POST'])
 def api_toggle_esgotado(slug):
-    """API para alternar status de esgotado de produto com pipeline Git."""
+    """API para alternar status de esgotado de produto."""
     data = request.get_json(silent=True) or {}
-    auto_push = data.get('auto_push', True)
+    auto_push = data.get('auto_push', False)
     return jsonify(run_toggle_esgotado_pipeline(slug, auto_push=auto_push))
+
+
+@api_bp.route('/batch/status', methods=['GET'])
+def api_batch_status():
+    """Retorna o status detalhado da fila de alterações locais pendentes."""
+    return jsonify(get_pending_batch_status())
+
+
+@api_bp.route('/batch/publish', methods=['POST'])
+def api_batch_publish():
+    """Dispara a publicação consolidada do lote de alterações para o GitHub/Vercel."""
+    return jsonify(run_batch_publish_pipeline())
+
+
+@api_bp.route('/batch/discard', methods=['POST'])
+def api_batch_discard():
+    """Descarta todas as alterações locais pendentes."""
+    success, msg = discard_pending_changes()
+    return jsonify({'success': success, 'message': msg})
 
 
 @api_bp.route('/check-slug', methods=['GET'])
@@ -364,4 +470,5 @@ def api_git_push():
         return jsonify({'success': True, 'output': output})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
 

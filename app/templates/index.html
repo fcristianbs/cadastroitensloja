@@ -38,49 +38,72 @@
       <input type="hidden" id="input-original-slug" name="original_slug" value="{{ original_slug }}">
     {% endif %}
     
-    <!-- 1. IDENTIFICAÇÃO BÁSICA -->
+    <!-- 1. IDENTIFICAÇÃO BÁSICA & CATEGORIAS MÚLTIPLAS -->
     <div class="card">
       <div class="card-header">
         <h2 class="card-title">
           <span class="card-title-step">01</span>
-          <span>Identificação da Peça</span>
+          <span>Identificação da Peça & Categorias</span>
         </h2>
       </div>
 
-      <div class="form-group">
-        <label class="form-label" for="input-nome">Nome do Produto <span class="required">*</span></label>
-        <input type="text" id="input-nome" name="nome" class="form-control" placeholder="ex: Suporte Starlink Mini · Veicular" value="{{ item.nome if item else '' }}" required>
-        <span class="form-hint"><i class="fas fa-info-circle"></i> Use nomes claros e objetivos com a aplicação da peça.</span>
-      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label" for="input-nome">Nome do Produto <span class="required">*</span></label>
+          <input type="text" id="input-nome" name="nome" class="form-control" placeholder="ex: Luminária - A Onda ou Suporte Starlink Mini" value="{{ item.nome if item else '' }}" required>
+          <span class="form-hint"><i class="fas fa-info-circle"></i> Use nomes claros e objetivos com a aplicação da peça.</span>
+        </div>
 
-      <div class="form-grid-3">
         <div class="form-group">
           <label class="form-label" for="input-slug">Slug (URL) <span class="required">*</span></label>
           <div class="input-with-badge">
-            <input type="text" id="input-slug" name="slug" class="form-control" placeholder="ex: suporte-starlink-mini-veicular" value="{{ item.slug if is_edit else (((item.slug ~ '-novo') if item else '')) }}" required style="font-family: var(--font-mono); font-size: 0.85rem;">
+            <input type="text" id="input-slug" name="slug" class="form-control" placeholder="ex: luminaria-a-onda" value="{{ item.slug if is_edit else (((item.slug ~ '-novo') if item else '')) }}" required style="font-family: var(--font-mono); font-size: 0.85rem;">
             <span id="slug-badge" class="input-badge" style="display: none;"></span>
           </div>
           <span class="form-hint">Gerado automaticamente em kebab-case.</span>
         </div>
+      </div>
 
-        <div class="form-group">
-          <label class="form-label" for="select-categoria">Categoria <span class="required">*</span></label>
-          <select id="select-categoria" name="categoria" class="form-control" required>
-            <option value="">Selecione uma categoria...</option>
-            {% for cat in categorias %}
-              <option value="{{ cat.slug }}" {% if item and item.categoria == cat.slug %}selected{% endif %}>{{ cat.nome }}</option>
-            {% endfor %}
-          </select>
-          <span class="form-hint">Carregada dinamicamente do catálogo.</span>
+      <!-- SELETOR DE MÚLTIPLAS CATEGORIAS -->
+      <div class="form-group" style="margin-top: 1rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+          <label class="form-label" style="margin-bottom: 0;">Categorias do Produto <span class="required">*</span></label>
+          <span class="form-hint" style="margin-top: 0;">Selecione 1 ou mais categorias. Clique em <kbd style="background: var(--surface-overlay); padding: 1px 5px; border-radius: 3px; font-size: 10px; color: var(--cad);">★ Principal</kbd> para definir a categoria primária.</span>
         </div>
 
-        <div class="form-group">
-          <label class="form-label" for="select-subcategoria">Subcategoria <span class="required">*</span></label>
-          <select id="select-subcategoria" name="subcategoria" class="form-control" required {% if not item or not item.categoria %}disabled{% endif %}>
-            <option value="">{% if item and item.categoria %}Carregando subcategorias...{% else %}Selecione a categoria primeiro...{% endif %}</option>
-          </select>
-          <span class="form-hint">Dependente da categoria selecionada.</span>
+        <!-- Grade de Categorias Clicáveis -->
+        <div id="categorias-selector-grid" class="categorias-grid">
+          {% for cat in categorias %}
+            <div class="cat-card-item" data-slug="{{ cat.slug }}">
+              <div class="cat-card-header">
+                <input type="checkbox" class="cat-checkbox" value="{{ cat.slug }}" id="cat-check-{{ cat.slug }}">
+                <label for="cat-check-{{ cat.slug }}" class="cat-card-label">
+                  <span class="cat-name">{{ cat.nome }}</span>
+                </label>
+              </div>
+              <button type="button" class="btn-make-primary-cat" title="Definir como Categoria Principal" data-slug="{{ cat.slug }}">
+                <i class="fas fa-star"></i> <span>Principal</span>
+              </button>
+            </div>
+          {% endfor %}
         </div>
+        <input type="hidden" id="input-categoria-principal" name="categoria" value="{{ item.categoria if item else '' }}">
+      </div>
+
+      <!-- SELETOR DINÂMICO DE SUBCATEGORIAS AGRUPADAS -->
+      <div class="form-group" style="margin-top: 1.25rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+          <label class="form-label" style="margin-bottom: 0;">Subcategorias Dinâmicas</label>
+          <span class="form-hint" style="margin-top: 0;">Subcategorias disponíveis para as categorias ativas acima.</span>
+        </div>
+
+        <div id="subcategorias-container" class="subcategorias-box">
+          <div id="subcategorias-empty-msg" style="color: var(--ink-faint); font-size: 0.88rem; font-style: italic; padding: 0.5rem 0;">
+            <i class="fas fa-arrow-up"></i> Selecione ao menos uma categoria acima para visualizar as subcategorias disponíveis.
+          </div>
+          <div id="subcategorias-groups-container"></div>
+        </div>
+        <input type="hidden" id="input-subcategoria-principal" name="subcategoria" value="{{ item.subcategoria if item else '' }}">
       </div>
     </div>
 
@@ -405,23 +428,27 @@
       <div class="card-header" style="border-bottom-color: var(--nozzle-border);">
         <h2 class="card-title">
           <span class="card-title-step" style="background: var(--nozzle); color: var(--on-nozzle); border-color: var(--nozzle);">11</span>
-          <span>Publicar no Catálogo (Git & Deploy)</span>
+          <span>Salvar no Catálogo (Fila de Publicação)</span>
         </h2>
       </div>
 
-      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
-        <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
-          <input type="checkbox" name="auto_push" value="true" checked style="width: 20px; height: 20px; accent-color: var(--nozzle);">
-          <span style="font-size: 0.95rem; font-weight: 600;">
-            Realizar Commit e Push automático para GitHub (<code style="color: var(--nozzle);">origin/main</code>)
-          </span>
+      <div style="background: var(--surface-low); border: 1px solid var(--line-subtle); border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem;">
+        <label style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer;">
+          <input type="checkbox" id="input-auto-push" name="auto_push" value="true" style="width: 20px; height: 20px; accent-color: var(--nozzle); margin-top: 2px;">
+          <div>
+            <span style="font-size: 0.95rem; font-weight: 600; color: var(--ink-strong); display: block;">
+              Publicar imediatamente no GitHub & Vercel
+            </span>
+            <span style="font-size: 0.8rem; color: var(--ink-muted); display: block; margin-top: 0.25rem;">
+              <strong>Recomendado deixar desmarcado:</strong> Suas alterações serão salvas na fila local. Você pode cadastrar/editar vários itens e publicar todos juntos em <strong>1 único deploy</strong> pelo botão de lote.
+            </span>
+          </div>
         </label>
-        <span style="font-size: 0.8rem; color: var(--ink-muted);">Disparará o deploy no Vercel</span>
       </div>
 
       <button type="submit" id="btn-submit-product" class="btn btn-primary btn-lg" style="width: 100%;">
-        <i class="fas {% if is_edit %}fa-check-double{% else %}fa-rocket{% endif %}"></i>
-        <span>{{ 'Salvar Alterações e Publicar' if is_edit else 'Publicar Produto no Catálogo' }}</span>
+        <i class="fas {% if is_edit %}fa-check-double{% else %}fa-plus-circle{% endif %}"></i>
+        <span>{{ 'Salvar Alterações no Catálogo' if is_edit else 'Salvar Produto na Fila do Catálogo' }}</span>
       </button>
     </div>
 
@@ -450,7 +477,13 @@
 
       <!-- Conteúdo do Card -->
       <div class="preview-content">
-        <div id="preview-category" class="preview-cat-breadcrumb">{{ (item.categoria|upper ~ ' · ' ~ item.subcategoria|upper) if item else 'ENGENHARIA · STARLINK' }}</div>
+        <div id="preview-category" class="preview-cat-breadcrumb">
+          {% if item %}
+            {{ ((item.categorias|join(' · ')|upper) if (item.categorias and item.categorias|length > 0) else (item.categoria|upper ~ ' · ' ~ item.subcategoria|upper)) }}
+          {% else %}
+            ENGENHARIA · STARLINK
+          {% endif %}
+        </div>
         <h3 id="preview-title" class="preview-title">{{ item.nome if item else 'Nome do Produto' }}</h3>
         <p id="preview-summary" class="preview-summary">{{ item.resumo if item else 'Resumo curto destacando a utilidade da peça.' }}</p>
 
@@ -499,9 +532,9 @@
       </div>
       <ul style="padding-left: 1.25rem; line-height: 1.6;">
         <li><strong>RN01:</strong> Slug único em kebab-case.</li>
-        <li><strong>RN02:</strong> Categorias estritas do negócio.</li>
+        <li><strong>RN02:</strong> Múltiplas categorias permitidas; a 1ª é a principal.</li>
         <li><strong>RN05:</strong> Uso externo exige PETG-UV, PETG ou ASA.</li>
-        <li><strong>Fotos:</strong> Salvas em <code>static/</code> e <code>public/static/</code>.</li>
+        <li><strong>Fila:</strong> Alterações salvas localmente até o clique em Publicar Catálogo.</li>
       </ul>
     </div>
   </aside>
@@ -513,5 +546,7 @@
 </script>
 <input type="hidden" id="initial-category" value="{{ item.categoria if item else '' }}">
 <input type="hidden" id="initial-subcategory" value="{{ item.subcategoria if item else '' }}">
+<input type="hidden" id="initial-categories" value='{{ ((item.categorias if (item and item.categorias) else ([item.categoria] if (item and item.categoria) else [])))|tojson }}'>
+<input type="hidden" id="initial-subcategories" value='{{ ((item.subcategorias if (item and item.subcategorias) else ([item.subcategoria] if (item and item.subcategoria) else [])))|tojson }}'>
 {% endblock %}
 

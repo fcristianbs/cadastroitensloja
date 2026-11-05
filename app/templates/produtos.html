@@ -78,10 +78,13 @@
     <tbody>
       {% for p in produtos %}
         {% set is_esgotado = (p.esgotado or p.selo == 'ESGOTADO') %}
+        {% set categorias_list = p.categorias if (p.categorias and p.categorias is iterable and p.categorias is not string) else ([p.categoria] if p.categoria else []) %}
+        {% set subcategorias_list = p.subcategorias if (p.subcategorias and p.subcategorias is iterable and p.subcategorias is not string) else ([p.subcategoria] if p.subcategoria else []) %}
         <tr class="produto-linha {% if is_esgotado %}is-esgotado{% endif %}" 
             data-nome="{{ p.nome|lower }}" 
             data-slug="{{ p.slug }}" 
             data-categoria="{{ p.categoria }}" 
+            data-categorias="{{ categorias_list|join(',') }}"
             data-material="{{ p.material|lower }}"
             data-esgotado="{{ 'true' if is_esgotado else 'false' }}">
           <td>
@@ -98,9 +101,21 @@
             <div style="font-family: var(--font-mono); font-size: 11px; color: var(--ink-muted); margin-top: 2px;">{{ p.slug }}</div>
           </td>
           <td>
-            <span class="spec-chip">{{ p.categoria|upper }}</span>
-            {% if p.subcategoria %}
-              <span style="font-size: 0.78rem; color: var(--ink-faint);">/ {{ p.subcategoria }}</span>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+              {% if categorias_list %}
+                {% for c in categorias_list %}
+                  <span class="spec-chip" style="font-size: 11px; padding: 2px 7px; {% if loop.first %}border-color: var(--cad); color: var(--cad); background: var(--cad-soft);{% endif %}">
+                    {{ c|upper }}{% if loop.first and categorias_list|length > 1 %} ★{% endif %}
+                  </span>
+                {% endfor %}
+              {% else %}
+                <span class="spec-chip">{{ p.categoria|upper }}</span>
+              {% endif %}
+            </div>
+            {% if subcategorias_list %}
+              <div style="font-size: 0.78rem; color: var(--ink-faint); margin-top: 3px;">
+                {{ subcategorias_list|join(', ') }}
+              </div>
             {% endif %}
           </td>
           <td>
@@ -208,9 +223,9 @@
       </div>
 
       <div style="margin-top: 1rem;">
-        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
-          <input type="checkbox" id="delete-auto-push" checked style="accent-color: var(--nozzle); width: 16px; height: 16px;">
-          <span>Realizar Push automático para GitHub (<code>origin/main</code>)</span>
+        <label style="display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: var(--ink-muted);">
+          <input type="checkbox" id="delete-auto-push" style="accent-color: var(--nozzle); width: 16px; height: 16px; margin-top: 2px;">
+          <span>Publicar imediatamente no GitHub & Vercel (desmarque para manter na fila local)</span>
         </label>
       </div>
     </div>
@@ -252,9 +267,9 @@
       </div>
 
       <div style="margin-top: 1rem;">
-        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
-          <input type="checkbox" id="toggle-auto-push" checked style="accent-color: var(--nozzle); width: 16px; height: 16px;">
-          <span>Realizar Push automático para GitHub (<code>origin/main</code>)</span>
+        <label style="display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: var(--ink-muted);">
+          <input type="checkbox" id="toggle-auto-push" style="accent-color: var(--nozzle); width: 16px; height: 16px; margin-top: 2px;">
+          <span>Publicar imediatamente no GitHub & Vercel (desmarque para manter na fila local)</span>
         </label>
       </div>
     </div>
@@ -286,10 +301,12 @@
         const slug = linha.getAttribute('data-slug') || '';
         const material = linha.getAttribute('data-material') || '';
         const categoria = linha.getAttribute('data-categoria') || '';
+        const catsStr = linha.getAttribute('data-categorias') || categoria;
+        const categoriasArr = catsStr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
         const isEsgotado = linha.getAttribute('data-esgotado') === 'true';
 
         const matchTermo = !termo || nome.includes(termo) || slug.includes(termo) || material.includes(termo);
-        const matchCat = !cat || categoria === cat;
+        const matchCat = !cat || categoriasArr.includes(cat.toLowerCase()) || categoria.toLowerCase() === cat.toLowerCase();
         
         let matchStatus = true;
         if (status === 'ativos') {
@@ -308,6 +325,9 @@
 
     if (inputBusca) inputBusca.addEventListener('input', filtrar);
     if (selectCat) selectCat.addEventListener('change', filtrar);
+    if (selectStatus) selectStatus.addEventListener('change', filtrar);
+  });
+</script>
     if (selectStatus) selectStatus.addEventListener('change', filtrar);
   });
 </script>

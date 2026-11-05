@@ -11,7 +11,8 @@ from app.services.git_service import (
     git_commit,
     git_pull,
     git_push,
-    get_repo_status
+    get_repo_status,
+    run_git_command
 )
 from app.services.image_service import save_product_image, rename_product_images, delete_product_images
 from app.services.product_service import (
@@ -22,22 +23,22 @@ from app.services.product_service import (
     delete_product,
     toggle_esgotado_product,
     validate_product_data,
-    get_produto_by_slug
+    get_produto_by_slug,
+    load_produtos,
+    get_pending_batch_status
 )
+
 
 def run_publish_pipeline(
     raw_data: Dict[str, Any],
     image_file: Optional[FileStorage] = None,
-    auto_push: bool = True
+    auto_push: bool = False
 ) -> Dict[str, Any]:
     """
-    Executa o fluxo completo e automatizado de cadastro de produto e deploy:
-    1. Sincronização Prévia: git pull origin main
-    2. Upload e espelhamento da Imagem: static/ e public/static/
-    3. Atualização de data/produtos.json (UTF-8, indent=2, ensure_ascii=False)
-    4. Git Add dos arquivos modificados
-    5. Git Commit: "feat(catalogo): cadastrar produto <nome> (<slug>)"
-    6. Git Push: git push origin main
+    Cadastra ou atualiza o produto na base local (data/produtos.json) e salva fotos.
+    Se auto_push=True, executa também git add, commit e push imediato.
+    Se auto_push=False (padrão em lote), as alterações permanecem na fila local
+    para publicação consolidada em lote com o botão 'Publicar Catálogo na Vercel'.
     """
     logs: List[Dict[str, str]] = []
     
@@ -67,14 +68,14 @@ def run_publish_pipeline(
         if not repo_info.get("is_git_repo"):
             raise RuntimeError(f"Repositório Git não configurado ou inválido: {repo_info.get('error')}")
             
-        # Etapa 1: Sincronização Prévia (git pull)
-        log("GIT_PULL", "INFO", f"Executando 'git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}'...")
-        try:
-            _, pull_output = git_pull()
-            log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
-        except GitServiceError as e:
-            # Se for erro de conexão ou sem internet, avisa mas permite decidir se continua ou aborta
-            log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
+        # Etapa 1: Sincronização Prévia (se auto_push for ativo)
+        if auto_push:
+            log("GIT_PULL", "INFO", f"Executando 'git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}'...")
+            try:
+                _, pull_output = git_pull()
+                log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
+            except GitServiceError as e:
+                log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
 
         # Etapa 2: Validação Preliminar do Produto
         nome = (raw_data.get("nome") or "").strip()
@@ -91,32 +92,25 @@ def run_publish_pipeline(
         
         # Se veio imagem pelo formulário
         if image_file and image_file.filename:
-            log("IMAGE_SAVE", "INFO", f"Processando e renomeando imagem para '{slug}'...")
+            log("IMAGE_SAVE", "INFO", f"Processando e salvando imagem para '{slug}'...")
             img_info = save_product_image(
                 file_storage=image_file,
                 slug=slug,
                 alt_text=raw_data.get("imagem_alt") or nome,
                 image_type=raw_data.get("imagem_tipo") or "instalada"
             )
-            raw_data["imagens"] = [{
-                "src": img_info["src"],
-                "alt": img_info["alt"],
-                "tipo": img_info["tipo"]
-            }]
-            saved_image_filename = img_info["filename"]
-            log("IMAGE_SAVE", "SUCCESS", f"Foto salva com sucesso em 2 caminhos!", 
-                f"1. static/img/produtos/{saved_image_filename}\n2. public/static/img/produtos/{saved_image_filename}")
+            raw_data["imagens"] = [img_info]
+            saved_image_filename = Path(img_info["src"]).name
+            log("IMAGE_SAVE", "SUCCESS", f"Foto salva com sucesso em static/ e public/static/ ({saved_image_filename}).")
         else:
-            # Não enviou imagem nova
+            # Em caso de edição, preserva a foto existente
             if is_edit and existing_prod:
-                if slug != original_slug:
-                    # Slug foi alterado: renomeia a foto existente
-                    new_src = rename_product_images(original_slug, slug)
-                    if new_src:
-                        renamed_image_filename = new_src.split("/")[-1]
+                if original_slug != slug:
+                    renamed_image_filename = rename_product_images(original_slug, slug)
+                    if renamed_image_filename:
                         raw_data["imagens"] = [{
-                            "src": new_src,
-                            "alt": (existing_prod.get("imagens") or [{}])[0].get("alt", nome),
+                            "src": f"/static/img/produtos/{renamed_image_filename}",
+                            "alt": raw_data.get("imagem_alt") or nome,
                             "tipo": (existing_prod.get("imagens") or [{}])[0].get("tipo", "instalada")
                         }]
                         log("IMAGE_RENAME", "SUCCESS", f"Foto renomeada para '{renamed_image_filename}' acompanhando o novo slug.")
@@ -150,44 +144,41 @@ def run_publish_pipeline(
             insert_product(product_record, position="top")
             log("JSON_UPDATE", "SUCCESS", f"Produto '{nome}' inserido com sucesso em data/produtos.json.")
 
-        # Etapa 4: Git Add
-        files_to_stage = ["data/produtos.json"]
-        if saved_image_filename:
-            files_to_stage.append(f"static/img/produtos/{saved_image_filename}")
-            files_to_stage.append(f"public/static/img/produtos/{saved_image_filename}")
-        elif renamed_image_filename:
-            files_to_stage.append(f"static/img/produtos/{renamed_image_filename}")
-            files_to_stage.append(f"public/static/img/produtos/{renamed_image_filename}")
-            # Remove referências anteriores se necessário
-            for ext in ["png", "jpg", "jpeg", "webp"]:
-                files_to_stage.append(f"static/img/produtos/{original_slug}.{ext}")
-                files_to_stage.append(f"public/static/img/produtos/{original_slug}.{ext}")
-            
-        log("GIT_ADD", "INFO", f"Preparando arquivos para commit: {', '.join(files_to_stage)}")
-        git_add(files_to_stage)
-        log("GIT_ADD", "SUCCESS", "Arquivos adicionados à staging area do Git.")
-
-        # Etapa 5: Git Commit
-        action_verb = "atualizar" if is_edit else "cadastrar"
-        commit_msg = f"feat(catalogo): {action_verb} produto {nome} ({slug})"
-        log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
-        _, commit_hash, commit_out = git_commit(commit_msg)
-        log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
-
-        # Etapa 6: Git Push (se auto_push for True)
+        # Se auto_push estiver ativado (modo push imediato)
         if auto_push and Config.ENABLE_AUTO_PUSH:
+            files_to_stage = ["data/produtos.json"]
+            if saved_image_filename:
+                files_to_stage.append(f"static/img/produtos/{saved_image_filename}")
+                files_to_stage.append(f"public/static/img/produtos/{saved_image_filename}")
+            elif renamed_image_filename:
+                files_to_stage.append(f"static/img/produtos/{renamed_image_filename}")
+                files_to_stage.append(f"public/static/img/produtos/{renamed_image_filename}")
+                for ext in ["png", "jpg", "jpeg", "webp"]:
+                    files_to_stage.append(f"static/img/produtos/{original_slug}.{ext}")
+                    files_to_stage.append(f"public/static/img/produtos/{original_slug}.{ext}")
+                
+            log("GIT_ADD", "INFO", f"Preparando arquivos para commit: {', '.join(files_to_stage)}")
+            git_add(files_to_stage)
+            log("GIT_ADD", "SUCCESS", "Arquivos adicionados à staging area do Git.")
+
+            action_verb = "atualizar" if is_edit else "cadastrar"
+            commit_msg = f"feat(catalogo): {action_verb} produto {nome} ({slug})"
+            log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
+            _, commit_hash, commit_out = git_commit(commit_msg)
+            log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
+
             log("GIT_PUSH", "INFO", f"Enviando alterações para '{Config.GIT_REMOTE}/{Config.GIT_BRANCH}'...")
             _, push_out = git_push()
             log("GIT_PUSH", "SUCCESS", "Push concluído com sucesso! Deploy automático acionado no Vercel.", push_out)
             result["pushed"] = True
+            result["commit_hash"] = commit_hash
+            result["commit_message"] = commit_msg
         else:
-            log("GIT_PUSH", "INFO", "Push automático desativado. As alterações foram salvas e commitadas localmente.")
+            log("BATCH_QUEUE", "SUCCESS", f"Produto '{nome}' salvo na fila local de rascunhos. Clique em 'Publicar Catálogo' para enviar à Vercel.")
             result["pushed"] = False
 
         result["success"] = True
         result["product"] = product_record
-        result["commit_hash"] = commit_hash
-        result["commit_message"] = commit_msg
         return result
 
     except Exception as e:
@@ -198,14 +189,11 @@ def run_publish_pipeline(
         return result
 
 
-def run_delete_pipeline(slug: str, auto_push: bool = True) -> Dict[str, Any]:
+def run_delete_pipeline(slug: str, auto_push: bool = False) -> Dict[str, Any]:
     """
-    Executa o fluxo completo para remover um produto do catálogo:
-    1. Git Pull origin main
-    2. Remove fotos associadas do produto
-    3. Remove o registro de data/produtos.json
-    4. Git Add e Commit: feat(catalogo): remover produto <nome> (<slug>)
-    5. Git Push origin main
+    Remove um produto do catálogo local e fotos.
+    Se auto_push=True, executa também commit e push imediato.
+    Se auto_push=False (padrão em lote), mantém a alteração na fila local.
     """
     logs: List[Dict[str, str]] = []
     
@@ -234,13 +222,13 @@ def run_delete_pipeline(slug: str, auto_push: bool = True) -> Dict[str, Any]:
         if not repo_info.get("is_git_repo"):
             raise RuntimeError(f"Repositório Git não configurado ou inválido: {repo_info.get('error')}")
 
-        # Git Pull
-        log("GIT_PULL", "INFO", f"Executando 'git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}'...")
-        try:
-            _, pull_output = git_pull()
-            log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
-        except GitServiceError as e:
-            log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
+        if auto_push:
+            log("GIT_PULL", "INFO", f"Executando 'git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}'...")
+            try:
+                _, pull_output = git_pull()
+                log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
+            except GitServiceError as e:
+                log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
 
         # Exclui imagens físicas
         log("IMAGE_DELETE", "INFO", f"Removendo fotos associadas a '{slug}'...")
@@ -257,32 +245,29 @@ def run_delete_pipeline(slug: str, auto_push: bool = True) -> Dict[str, Any]:
         prod_name = removed_prod.get("nome", slug)
         log("JSON_DELETE", "SUCCESS", f"Produto '{prod_name}' removido com sucesso de data/produtos.json.")
 
-        # Git Add
-        files_to_stage = ["data/produtos.json"] + deleted_images
-        log("GIT_ADD", "INFO", f"Preparando alterações para commit: {', '.join(files_to_stage)}")
-        git_add(files_to_stage)
-        log("GIT_ADD", "SUCCESS", "Alterações adicionadas à staging area.")
-
-        # Git Commit
-        commit_msg = f"feat(catalogo): remover produto {prod_name} ({slug})"
-        log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
-        _, commit_hash, commit_out = git_commit(commit_msg)
-        log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
-
-        # Git Push
         if auto_push and Config.ENABLE_AUTO_PUSH:
+            files_to_stage = ["data/produtos.json"] + deleted_images
+            log("GIT_ADD", "INFO", f"Preparando alterações para commit: {', '.join(files_to_stage)}")
+            git_add(files_to_stage)
+            log("GIT_ADD", "SUCCESS", "Alterações adicionadas à staging area.")
+
+            commit_msg = f"feat(catalogo): remover produto {prod_name} ({slug})"
+            log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
+            _, commit_hash, commit_out = git_commit(commit_msg)
+            log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
+
             log("GIT_PUSH", "INFO", f"Enviando alterações para '{Config.GIT_REMOTE}/{Config.GIT_BRANCH}'...")
             _, push_out = git_push()
             log("GIT_PUSH", "SUCCESS", "Push concluído com sucesso! Deploy disparado no Vercel.", push_out)
             result["pushed"] = True
+            result["commit_hash"] = commit_hash
+            result["commit_message"] = commit_msg
         else:
-            log("GIT_PUSH", "INFO", "Push automático desativado. Alterações salvas localmente.")
+            log("BATCH_QUEUE", "SUCCESS", f"Produto '{prod_name}' removido localmente e adicionado à fila de pendências.")
             result["pushed"] = False
 
         result["success"] = True
         result["product"] = removed_prod
-        result["commit_hash"] = commit_hash
-        result["commit_message"] = commit_msg
         return result
 
     except Exception as e:
@@ -293,13 +278,11 @@ def run_delete_pipeline(slug: str, auto_push: bool = True) -> Dict[str, Any]:
         return result
 
 
-def run_toggle_esgotado_pipeline(slug: str, auto_push: bool = True) -> Dict[str, Any]:
+def run_toggle_esgotado_pipeline(slug: str, auto_push: bool = False) -> Dict[str, Any]:
     """
-    Executa o fluxo para alternar o status de esgotado de um produto no catálogo:
-    1. Git Pull origin main
-    2. Alterna 'esgotado' e ajusta selo no data/produtos.json
-    3. Git Add e Commit: feat(catalogo): marcar produto <nome> como esgotado / reativar
-    4. Git Push origin main
+    Alterna o status de esgotado de um produto no catálogo local.
+    Se auto_push=True, executa commit e push imediato.
+    Se auto_push=False (padrão em lote), mantém a alteração na fila local.
     """
     logs: List[Dict[str, str]] = []
     
@@ -329,50 +312,47 @@ def run_toggle_esgotado_pipeline(slug: str, auto_push: bool = True) -> Dict[str,
         if not repo_info.get("is_git_repo"):
             raise RuntimeError(f"Repositório Git não configurado ou inválido: {repo_info.get('error')}")
 
-        # Git Pull
-        log("GIT_PULL", "INFO", f"Executando 'git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}'...")
-        try:
-            _, pull_output = git_pull()
-            log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
-        except GitServiceError as e:
-            log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
+        if auto_push:
+            log("GIT_PULL", "INFO", f"Executando 'git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}'...")
+            try:
+                _, pull_output = git_pull()
+                log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
+            except GitServiceError as e:
+                log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
 
-        # Alterna status no JSON
+        # Alterna status no JSON local
         toggle_success, novo_status, updated_prod = toggle_esgotado_product(slug)
         if not toggle_success or not updated_prod:
             raise ValueError(f"Produto '{slug}' não foi encontrado no catálogo.")
 
         prod_name = updated_prod.get("nome", slug)
         status_label = "marcado como ESGOTADO" if novo_status else "REATIVADO no catálogo"
-        log("STATUS_UPDATE", "SUCCESS", f"Produto '{prod_name}' agora está {status_label}.")
+        log("STATUS_UPDATE", "SUCCESS", f"Produto '{prod_name}' agora está {status_label} na base local.")
 
-        # Git Add
-        files_to_stage = ["data/produtos.json"]
-        git_add(files_to_stage)
-        log("GIT_ADD", "SUCCESS", "data/produtos.json adicionado à staging area.")
-
-        # Git Commit
-        action_verb = "marcar produto como esgotado" if novo_status else "reativar produto"
-        commit_msg = f"feat(catalogo): {action_verb} {prod_name} ({slug})"
-        log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
-        _, commit_hash, commit_out = git_commit(commit_msg)
-        log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
-
-        # Git Push
         if auto_push and Config.ENABLE_AUTO_PUSH:
+            files_to_stage = ["data/produtos.json"]
+            git_add(files_to_stage)
+            log("GIT_ADD", "SUCCESS", "data/produtos.json adicionado à staging area.")
+
+            action_verb = "marcar produto como esgotado" if novo_status else "reativar produto"
+            commit_msg = f"feat(catalogo): {action_verb} {prod_name} ({slug})"
+            log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
+            _, commit_hash, commit_out = git_commit(commit_msg)
+            log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
+
             log("GIT_PUSH", "INFO", f"Enviando alterações para '{Config.GIT_REMOTE}/{Config.GIT_BRANCH}'...")
             _, push_out = git_push()
             log("GIT_PUSH", "SUCCESS", "Push concluído com sucesso! Deploy disparado no Vercel.", push_out)
             result["pushed"] = True
+            result["commit_hash"] = commit_hash
+            result["commit_message"] = commit_msg
         else:
-            log("GIT_PUSH", "INFO", "Push automático desativado. Alterações salvas localmente.")
+            log("BATCH_QUEUE", "SUCCESS", f"Status de '{prod_name}' alterado na fila local. Clique em 'Publicar Catálogo' para enviar à Vercel.")
             result["pushed"] = False
 
         result["success"] = True
         result["product"] = updated_prod
         result["esgotado"] = novo_status
-        result["commit_hash"] = commit_hash
-        result["commit_message"] = commit_msg
         return result
 
     except Exception as e:
@@ -382,3 +362,134 @@ def run_toggle_esgotado_pipeline(slug: str, auto_push: bool = True) -> Dict[str,
         result["error"] = error_detail
         return result
 
+
+def run_batch_publish_pipeline() -> Dict[str, Any]:
+    """
+    Consolida e publica todas as alterações locais pendentes em 1 único commit e 1 único deploy na Vercel:
+    1. Valida todos os produtos da base segundo as regras de negócio (especialmente RN05).
+    2. Executa 'git pull origin main' para sincronização.
+    3. Executa 'git add' para data/produtos.json, data/categorias.json e imagens.
+    4. Cria o commit consolidado: 'feat(catalogo): publicar lote com X produtos cadastrados/atualizados'
+    5. Executa 'git push origin main' com retries.
+    """
+    logs: List[Dict[str, str]] = []
+    
+    def log(step: str, status: str, message: str, detail: str = ""):
+        logs.append({
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "step": step,
+            "status": status,
+            "message": message,
+            "detail": detail
+        })
+
+    result: Dict[str, Any] = {
+        "success": False,
+        "logs": logs,
+        "commit_hash": None,
+        "commit_message": None,
+        "pushed": False,
+        "batch_summary": None,
+        "error": None
+    }
+
+    try:
+        log("PRE_FLIGHT", "INFO", "Verificando alterações pendentes no catálogo...")
+        repo_info = get_repo_status()
+        if not repo_info.get("is_git_repo"):
+            raise RuntimeError(f"Repositório Git não configurado ou inválido: {repo_info.get('error')}")
+
+        batch_status = get_pending_batch_status()
+        result["batch_summary"] = batch_status
+
+        if not batch_status.get("has_pending"):
+            log("PRE_FLIGHT", "INFO", "Nenhuma alteração pendente. O catálogo local já está sincronizado com a Vercel.")
+            result["success"] = True
+            result["pushed"] = False
+            return result
+
+        # Validação de consistência de todos os produtos do catálogo (RN01, RN02, RN05)
+        log("VALIDATION", "INFO", "Validando integridade e regras de negócio de todas as peças (RN01, RN02, RN05)...")
+        produtos = load_produtos()
+        all_errors = []
+        for p in produtos:
+            p_slug = p.get("slug", "sem-slug")
+            is_valid, p_errors = validate_product_data(p, is_new=False, original_slug=p_slug)
+            if not is_valid:
+                all_errors.append(f"Produto '{p_slug}': {'; '.join(p_errors)}")
+
+        if all_errors:
+            error_msg = "Erros de validação encontrados no lote: " + " | ".join(all_errors[:5])
+            log("VALIDATION", "ERROR", error_msg)
+            raise ValueError(error_msg)
+
+        log("VALIDATION", "SUCCESS", f"Validação concluída: Todas as {len(produtos)} peças atendem às regras de negócio.")
+
+        # Git Pull
+        log("GIT_PULL", "INFO", f"Sincronizando com o GitHub ('git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}')...")
+        try:
+            _, pull_output = git_pull()
+            log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
+        except GitServiceError as e:
+            log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
+
+        # Git Add
+        files_to_stage = ["data/produtos.json"]
+        if Config.CATEGORIAS_JSON_PATH.exists():
+            files_to_stage.append("data/categorias.json")
+        if Config.STATIC_IMG_DIR.exists():
+            files_to_stage.append("static/img/produtos")
+        if Config.PUBLIC_IMG_DIR.exists():
+            files_to_stage.append("public/static/img/produtos")
+
+        log("GIT_ADD", "INFO", "Adicionando arquivos modificados à staging area...")
+        git_add(files_to_stage)
+        log("GIT_ADD", "SUCCESS", "Arquivos do catálogo preparados para o commit de lote.")
+
+        # Git Commit
+        novos = batch_status.get("novos", [])
+        editados = batch_status.get("editados", [])
+        removidos = batch_status.get("removidos", [])
+        total = len(novos) + len(editados) + len(removidos)
+
+        parts = []
+        if novos:
+            parts.append(f"{len(novos)} novo{'s' if len(novos) > 1 else ''}")
+        if editados:
+            parts.append(f"{len(editados)} atualizado{'s' if len(editados) > 1 else ''}")
+        if removidos:
+            parts.append(f"{len(removidos)} removido{'s' if len(removidos) > 1 else ''}")
+
+        detalhe = f" ({', '.join(parts)})" if parts else ""
+        commit_msg = f"feat(catalogo): publicar lote com {total if total > 0 else 'alterações de'} produtos{detalhe}"
+
+        log("GIT_COMMIT", "INFO", f"Criando commit único do lote: '{commit_msg}'...")
+        commit_hash = ""
+        try:
+            _, commit_hash, commit_out = git_commit(commit_msg)
+            log("GIT_COMMIT", "SUCCESS", f"Commit criado: [{commit_hash}] {commit_msg}", commit_out)
+        except GitServiceError as e:
+            if "nothing to commit" in (e.stderr or e.stdout).lower():
+                log("GIT_COMMIT", "INFO", "Nenhum novo commit necessário, enviando commits pendentes locais.")
+                code, hash_out, _ = run_git_command(["rev-parse", "--short", "HEAD"])
+                commit_hash = hash_out
+            else:
+                raise
+
+        # Git Push
+        log("GIT_PUSH", "INFO", f"Enviando lote para '{Config.GIT_REMOTE}/{Config.GIT_BRANCH}' (1 deploy na Vercel)...")
+        _, push_out = git_push()
+        log("GIT_PUSH", "SUCCESS", "Push concluído com sucesso no GitHub! O Vercel iniciou o deploy único do lote.", push_out)
+
+        result["success"] = True
+        result["pushed"] = True
+        result["commit_hash"] = commit_hash
+        result["commit_message"] = commit_msg
+        return result
+
+    except Exception as e:
+        error_detail = str(e)
+        log("ERROR", "ERROR", f"Falha na publicação do lote: {error_detail}")
+        result["success"] = False
+        result["error"] = error_detail
+        return result

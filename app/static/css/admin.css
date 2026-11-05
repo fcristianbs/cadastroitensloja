@@ -1041,3 +1041,273 @@ textarea.form-control {
   margin-top: auto;
 }
 
+/* ==========================================================================
+   Seletor de Múltiplas Categorias & Subcategorias
+   ========================================================================== */
+
+.categorias-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.cat-card-item {
+  background: var(--surface-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  transition: all 0.15s ease;
+  position: relative;
+  user-select: none;
+}
+
+.cat-card-item:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cat-card-item.selected {
+  border-color: var(--cad);
+  background: var(--cad-soft);
+}
+
+.cat-card-item.is-primary {
+  border-color: var(--nozzle);
+  box-shadow: 0 0 0 1px var(--nozzle), 0 0 12px rgba(255, 107, 0, 0.15);
+  background: rgba(255, 107, 0, 0.06);
+}
+
+.cat-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cat-card-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.cat-card-checkbox-label input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--nozzle);
+  cursor: pointer;
+}
+
+.cat-card-desc {
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  line-height: 1.35;
+}
+
+.cat-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 0.35rem;
+}
+
+.btn-make-primary-cat {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.btn-make-primary-cat:hover {
+  border-color: var(--nozzle);
+  color: var(--nozzle);
+}
+
+.cat-primary-badge {
+  background: var(--nozzle);
+  color: var(--on-nozzle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  letter-spacing: 0.04em;
+}
+
+/* Subcategorias Agrupadas */
+.subcategorias-box {
+  background: var(--surface-overlay);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  min-height: 80px;
+}
+
+.subcat-group {
+  margin-bottom: 0.9rem;
+}
+
+.subcat-group:last-child {
+  margin-bottom: 0;
+}
+
+.subcat-group-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--cad);
+  margin-bottom: 0.45rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.subcat-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.subcat-chip {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-muted);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.subcat-chip:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.subcat-chip.selected {
+  border-color: var(--cad);
+  background: var(--cad-soft);
+  color: var(--ink);
+}
+
+.subcat-chip.is-primary {
+  border-color: var(--nozzle);
+  background: rgba(255, 107, 0, 0.12);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.subcat-chip input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--nozzle);
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Sticky Batch Publication Bar (Barra Fixa de Publicação em Lote)
+   ========================================================================== */
+
+.sticky-batch-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 950;
+  background: rgba(15, 20, 26, 0.96);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line-strong);
+  padding: 0.85rem 1.5rem;
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.6);
+  display: none;
+  animation: slideUpBatch 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.sticky-batch-bar.is-visible {
+  display: block;
+}
+
+@keyframes slideUpBatch {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sticky-batch-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.batch-status-info {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.batch-pulse-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--nozzle);
+  box-shadow: 0 0 12px var(--nozzle);
+  animation: pulseDot 1.8s infinite ease-in-out;
+  flex-shrink: 0;
+}
+
+@keyframes pulseDot {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+

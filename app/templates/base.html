@@ -90,7 +90,7 @@
   </main>
 
   <!-- Footer -->
-  <footer class="app-footer">
+  <footer class="app-footer" style="padding-bottom: 5rem;">
     <div>
       <strong>VOXEL LAB</strong> · Sistema Interno de Gestão de Catálogo Serverless
     </div>
@@ -98,6 +98,69 @@
       Repositório: <code style="color: var(--cad);">{{ repo_status.repo_path }}</code>
     </div>
   </footer>
+
+  <!-- =========================================================================
+       BARRA DE PUBLICAÇÃO FIXA / PAINEL DE PENDÊNCIAS EM LOTE
+       ========================================================================= -->
+  <div id="sticky-batch-bar" class="sticky-batch-bar {% if batch_status and batch_status.has_pending %}is-visible{% endif %}">
+    <div class="sticky-batch-container">
+      <div class="batch-info-section">
+        <div class="batch-pulse-indicator">
+          <span class="batch-pulse-dot"></span>
+          <i class="fas fa-layer-group" style="color: var(--nozzle);"></i>
+        </div>
+        <div>
+          <div class="batch-title">
+            <span id="batch-pending-count">{{ batch_status.total_pending if batch_status else 0 }}</span>
+            <span id="batch-pending-label">{{ 'alterações locais prontas para publicação' if (not batch_status or batch_status.total_pending != 1) else 'alteração local pronta para publicação' }}</span>
+          </div>
+          <div class="batch-subtitle" id="batch-summary-text">
+            {{ batch_status.summary_text if batch_status else 'Catálogo sincronizado com a Vercel' }}
+          </div>
+        </div>
+      </div>
+
+      <div class="batch-actions-section">
+        <button type="button" class="btn btn-outline btn-discard" id="btn-batch-discard" title="Descartar todas as alterações locais e voltar à versão de produção">
+          <i class="fas fa-rotate-left"></i>
+          <span>Descartar Rascunhos</span>
+        </button>
+
+        <button type="button" class="btn btn-primary btn-publish-batch" id="btn-batch-publish" title="Consolidar e enviar todas as alterações em 1 único deploy na Vercel">
+          <i class="fas fa-cloud-arrow-up"></i>
+          <span>Publicar Catálogo na Vercel</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Confirmação para Descartar Rascunhos -->
+  <div id="modal-confirm-discard" class="modal-backdrop">
+    <div class="modal-dialog" style="max-width: 500px;">
+      <div class="modal-header">
+        <div class="modal-title" style="color: var(--warning);">
+          <i class="fas fa-triangle-exclamation"></i>
+          <span>Descartar Alterações Locais?</span>
+        </div>
+        <button type="button" onclick="fecharModalConfirmDiscard()" style="background: none; border: none; color: var(--ink-muted); font-size: 1.25rem; cursor: pointer;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.95rem; color: var(--ink); margin-bottom: 0.75rem;">
+          Você tem certeza que deseja descartar todas as alterações locais pendentes?
+        </p>
+        <div style="background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.85rem 1rem; font-size: 0.85rem; color: var(--ink-muted); line-height: 1.5;">
+          O arquivo <code>data/produtos.json</code> e quaisquer fotos recém-adicionadas serão revertidos para a versão exata que está no ar na Vercel. <strong>Esta ação não pode ser desfeita.</strong>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="fecharModalConfirmDiscard()">Cancelar</button>
+        <button type="button" class="btn" id="btn-confirm-discard-action" style="background: var(--error); color: #fff;">
+          <i class="fas fa-trash-can"></i>
+          <span>Sim, Descartar Tudo</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- =========================================================================
        MODAL DE PROGRESSO DO PIPELINE GIT / DEPLOY (Global)

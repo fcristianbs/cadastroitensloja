@@ -216,3 +216,35 @@ def git_push(branch: Optional[str] = None, remote: Optional[str] = None, max_ret
         returncode=1
     )
 
+
+def get_file_content_from_ref(ref: str, relative_path: str) -> Optional[str]:
+    """
+    Obtém o conteúdo textual de um arquivo a partir de uma referência git (ex: 'HEAD', 'origin/main').
+    Retorna None se o arquivo ou referência não existir.
+    """
+    try:
+        code, stdout, _ = run_git_command(["show", f"{ref}:{relative_path}"])
+        if code == 0:
+            return stdout
+    except Exception:
+        pass
+    return None
+
+
+def git_discard_changes(file_paths: Optional[List[str]] = None) -> Tuple[bool, str]:
+    """
+    Descarta alterações locais não commitadas.
+    Se file_paths for fornecido, restaura apenas esses arquivos para HEAD.
+    Se file_paths for None, restaura todo o repositório e limpa arquivos novos não rastreados.
+    """
+    if file_paths:
+        code, stdout, stderr = run_git_command(["checkout", "HEAD", "--"] + file_paths)
+        if code != 0:
+            raise GitServiceError(f"Falha ao restaurar arquivos: {stderr or stdout}")
+        return True, stdout or "Arquivos restaurados para o estado de HEAD."
+    else:
+        run_git_command(["checkout", "HEAD", "--", "."])
+        run_git_command(["clean", "-fd", "static/img/produtos", "public/static/img/produtos"])
+        return True, "Todas as alterações locais foram descartadas."
+
+

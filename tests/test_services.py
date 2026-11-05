@@ -225,6 +225,82 @@ class ProductServiceTestCase(unittest.TestCase):
         self.assertEqual(prod["selo"], "NOVO")
         mock_save.assert_called_once()
 
+    def test_multi_category_validation_and_build(self):
+        """Testa suporte e validações de múltiplas categorias e subcategorias."""
+        data_multi = {
+            "nome": "Luminária Onda Tech",
+            "slug": "luminaria-onda-tech",
+            "categorias": ["casa", "setup-games"],
+            "subcategorias": ["decoracao", "desktop"],
+            "resumo": "Luminária híbrida para ambiente de quarto ou setup gamer.",
+            "descricao": "Desc",
+            "uso": "interno",
+            "material": "PLA",
+            "imagens": [{"src": "/static/img/teste.png"}]
+        }
+        valid, errors = validate_product_data(data_multi, is_new=False)
+        self.assertTrue(valid, f"Deveria aceitar múltiplas categorias válidas: {errors}")
+
+        record = build_product_record(data_multi)
+        self.assertEqual(record["categorias"], ["casa", "setup-games"])
+        self.assertEqual(record["subcategorias"], ["decoracao", "desktop"])
+        # Retrocompatibilidade: primeiro item vira o campo primário
+        self.assertEqual(record["categoria"], "casa")
+        self.assertEqual(record["subcategoria"], "decoracao")
+
+    def test_multi_category_invalid_subcategory_check(self):
+        """Testa que subcategoria não pertencente às categorias ativas é rejeitada."""
+        data_invalida = {
+            "nome": "Peça Errada",
+            "slug": "peca-errada",
+            "categorias": ["setup-games"],
+            "subcategorias": ["starlink"],  # starlink pertence a engenharia, não setup-games!
+            "resumo": "Resumo",
+            "descricao": "Desc",
+            "uso": "interno",
+            "material": "PLA",
+            "imagens": [{"src": "/static/img/teste.png"}]
+        }
+        valid, errors = validate_product_data(data_invalida, is_new=False)
+        self.assertFalse(valid)
+        self.assertTrue(any("Subcategoria 'starlink' não pertence" in e for e in errors))
+
+    @patch('app.services.git_service.run_git_command')
+    @patch('app.services.git_service.get_file_content_from_ref')
+    @patch('app.services.product_service.load_produtos')
+    def test_get_pending_batch_status(self, mock_load_prod, mock_git_show, mock_git_cmd):
+        """Testa cálculo de alterações pendentes no lote."""
+        import json
+        from app.services.product_service import get_pending_batch_status
+
+        mock_git_cmd.return_value = (True, "0\n", "")
+        # Git remoto tem item-1 e item-2
+        remote_catalog = [
+            {"slug": "item-1", "nome": "Item 1", "preco": 10.0, "esgotado": False},
+            {"slug": "item-2", "nome": "Item 2", "preco": 20.0, "esgotado": False}
+        ]
+        mock_git_show.return_value = json.dumps(remote_catalog)
+
+        # Localmente: item-1 foi editado, item-2 removido, item-3 novo
+        local_catalog = [
+            {"slug": "item-1", "nome": "Item 1 Editado", "preco": 15.0, "esgotado": False},
+            {"slug": "item-3", "nome": "Item 3 Novo", "preco": 30.0, "esgotado": False}
+        ]
+        mock_load_prod.return_value = local_catalog
+
+        status = get_pending_batch_status()
+        self.assertTrue(status["has_pending"])
+        self.assertEqual(status["total_pending"], 3)
+        novos_slugs = [x["slug"] for x in status["novos"]]
+        editados_slugs = [x["slug"] for x in status["editados"]]
+        removidos_slugs = [x["slug"] for x in status["removidos"]]
+        self.assertIn("item-3", novos_slugs)
+        self.assertIn("item-1", editados_slugs)
+        self.assertIn("item-2", removidos_slugs)
+        self.assertIn("1 novo", status["summary_text"])
+        self.assertIn("1 editado", status["summary_text"])
+        self.assertIn("1 removido", status["summary_text"])
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -4,7 +4,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  initCategoryCascading();
+  initMultiCategorySelector();
   initSlugGenerator();
   initMaterialUsoRule();
   initPhotoDropzone();
@@ -16,19 +16,26 @@ document.addEventListener('DOMContentLoaded', () => {
   initPublishPipeline();
   initGitPullAction();
   initCatalogActions();
+  initBatchBar();
 });
 
 // =============================================================================
-// 0. Seletor em Cascata de Categorias e Subcategorias (Dinâmico)
+// 0. Seletor de Múltiplas Categorias e Subcategorias com Categoria Primária
 // =============================================================================
-function initCategoryCascading() {
-  const catSelect = document.getElementById('select-categoria');
-  const subSelect = document.getElementById('select-subcategoria');
+function initMultiCategorySelector() {
+  const grid = document.getElementById('categorias-selector-grid');
+  const subContainer = document.getElementById('subcategorias-container');
   const rawDataEl = document.getElementById('dados-categorias');
-  const initialCatEl = document.getElementById('initial-category');
-  const initialSubEl = document.getElementById('initial-subcategory');
+  const inputCatPrincipal = document.getElementById('input-categoria-principal');
+  const inputSubPrincipal = document.getElementById('input-subcategoria-principal');
+  const initCatsEl = document.getElementById('initial-categories');
+  const initSubsEl = document.getElementById('initial-subcategories');
+  const initCatEl = document.getElementById('initial-category');
+  const initSubEl = document.getElementById('initial-subcategory');
 
-  if (!catSelect || !subSelect) return;
+  // Fallback para select legado se a grid não estiver presente
+  const legacyCatSelect = document.getElementById('select-categoria');
+  const legacySubSelect = document.getElementById('select-subcategoria');
 
   let categorias = [];
   try {
@@ -36,70 +43,254 @@ function initCategoryCascading() {
       categorias = JSON.parse(rawDataEl.textContent);
     }
   } catch (e) {
-    console.error('Falha ao processar categorias embutidas:', e);
+    console.error('Falha ao processar categorias:', e);
   }
 
-  function renderSubcategories(catSlug, preselectedSub = '') {
-    subSelect.innerHTML = '';
+  // Parse estado inicial
+  let selectedCategories = [];
+  try {
+    if (initCatsEl && initCatsEl.value.trim()) {
+      const parsed = JSON.parse(initCatsEl.value);
+      if (Array.isArray(parsed)) selectedCategories = parsed;
+    }
+  } catch (e) {
+    console.warn('Erro ao ler categorias iniciais:', e);
+  }
 
-    if (!catSlug) {
-      subSelect.innerHTML = '<option value="">Selecione a categoria primeiro...</option>';
-      subSelect.disabled = true;
+  if (selectedCategories.length === 0 && initCatEl && initCatEl.value.trim()) {
+    selectedCategories = [initCatEl.value.trim()];
+  }
+
+  let selectedSubcategories = [];
+  try {
+    if (initSubsEl && initSubsEl.value.trim()) {
+      const parsed = JSON.parse(initSubsEl.value);
+      if (Array.isArray(parsed)) selectedSubcategories = parsed;
+    }
+  } catch (e) {
+    console.warn('Erro ao ler subcategorias iniciais:', e);
+  }
+
+  if (selectedSubcategories.length === 0 && initSubEl && initSubEl.value.trim()) {
+    selectedSubcategories = [initSubEl.value.trim()];
+  }
+
+  // Se nenhum estiver pré-selecionado e houver categorias, seleciona a primeira por padrão
+  if (selectedCategories.length === 0 && categorias.length > 0) {
+    selectedCategories = [categorias[0].slug];
+    if (categorias[0].subcategorias && categorias[0].subcategorias.length > 0) {
+      const firstSub = categorias[0].subcategorias[0];
+      selectedSubcategories = [typeof firstSub === 'object' ? firstSub.slug : firstSub];
+    }
+  }
+
+  // Suporte a legado caso a página use os selects
+  if (!grid && legacyCatSelect && legacySubSelect) {
+    function renderLegacySubcategories(catSlug, preselectedSub = '') {
+      legacySubSelect.innerHTML = '';
+      if (!catSlug) {
+        legacySubSelect.innerHTML = '<option value="">Selecione a categoria primeiro...</option>';
+        legacySubSelect.disabled = true;
+        return;
+      }
+      const catObj = categorias.find(c => c.slug === catSlug);
+      if (catObj && Array.isArray(catObj.subcategorias) && catObj.subcategorias.length > 0) {
+        legacySubSelect.disabled = false;
+        catObj.subcategorias.forEach(sub => {
+          const slug = typeof sub === 'object' ? sub.slug : sub;
+          const nome = typeof sub === 'object' ? sub.nome : sub;
+          const opt = document.createElement('option');
+          opt.value = slug;
+          opt.textContent = nome;
+          if (preselectedSub && slug === preselectedSub) opt.selected = true;
+          legacySubSelect.appendChild(opt);
+        });
+      }
+    }
+    legacyCatSelect.addEventListener('change', () => {
+      renderLegacySubcategories(legacyCatSelect.value);
+      document.dispatchEvent(new CustomEvent('product-category-updated'));
+    });
+    legacySubSelect.addEventListener('change', () => {
+      document.dispatchEvent(new CustomEvent('product-category-updated'));
+    });
+    const initC = (initCatEl ? initCatEl.value : '') || legacyCatSelect.value;
+    const initS = initSubEl ? initSubEl.value : '';
+    if (initC) {
+      legacyCatSelect.value = initC;
+      renderLegacySubcategories(initC, initS);
+    }
+    return;
+  }
+
+  if (!grid) return;
+
+  function updateHiddenInputs() {
+    const primaryCat = selectedCategories.length > 0 ? selectedCategories[0] : '';
+    const primarySub = selectedSubcategories.length > 0 ? selectedSubcategories[0] : '';
+    if (inputCatPrincipal) inputCatPrincipal.value = primaryCat;
+    if (inputSubPrincipal) inputSubPrincipal.value = primarySub;
+  }
+
+  function renderSubcategoriesContainer() {
+    if (!subContainer) return;
+    subContainer.innerHTML = '';
+
+    if (selectedCategories.length === 0) {
+      subContainer.innerHTML = `
+        <div style="color: var(--ink-muted); font-size: 0.85rem; padding: 1rem; text-align: center;">
+          <i class="fas fa-arrow-up" style="margin-right: 6px; color: var(--cad);"></i>
+          Selecione ao menos uma categoria acima para visualizar e marcar as subcategorias disponíveis.
+        </div>
+      `;
       return;
     }
 
-    const catObj = categorias.find(c => c.slug === catSlug);
+    selectedCategories.forEach(catSlug => {
+      const catObj = categorias.find(c => c.slug === catSlug);
+      if (!catObj || !Array.isArray(catObj.subcategorias) || catObj.subcategorias.length === 0) return;
 
-    if (catObj && Array.isArray(catObj.subcategorias) && catObj.subcategorias.length > 0) {
-      subSelect.disabled = false;
-      const placeholder = document.createElement('option');
-      placeholder.value = '';
-      placeholder.textContent = 'Selecione uma subcategoria...';
-      subSelect.appendChild(placeholder);
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'subcat-group';
+
+      const groupTitle = document.createElement('div');
+      groupTitle.className = 'subcat-group-title';
+      groupTitle.innerHTML = `<i class="fas fa-tag"></i> ${escapeHtml(catObj.nome)} (Subcategorias)`;
+      groupDiv.appendChild(groupTitle);
+
+      const chipsGrid = document.createElement('div');
+      chipsGrid.className = 'subcat-chips-grid';
 
       catObj.subcategorias.forEach(sub => {
-        const slug = typeof sub === 'object' ? sub.slug : sub;
-        const nome = typeof sub === 'object' ? sub.nome : sub;
-        const desc = typeof sub === 'object' && sub.descricao ? sub.descricao : '';
+        const subSlug = typeof sub === 'object' ? sub.slug : sub;
+        const subNome = typeof sub === 'object' ? sub.nome : sub;
+        const subDesc = typeof sub === 'object' && sub.descricao ? sub.descricao : '';
+        const isSelected = selectedSubcategories.includes(subSlug);
+        const isPrimary = selectedSubcategories.length > 0 && selectedSubcategories[0] === subSlug;
 
-        const opt = document.createElement('option');
-        opt.value = slug;
-        opt.textContent = nome;
-        if (desc) opt.title = desc;
+        const chipLabel = document.createElement('label');
+        chipLabel.className = `subcat-chip ${isSelected ? 'selected' : ''} ${isPrimary ? 'is-primary' : ''}`;
+        if (subDesc) chipLabel.title = subDesc;
 
-        if (preselectedSub && slug === preselectedSub) {
-          opt.selected = true;
-        }
+        chipLabel.innerHTML = `
+          <input type="checkbox" name="subcategorias" value="${escapeHtml(subSlug)}" ${isSelected ? 'checked' : ''}>
+          <span>${escapeHtml(subNome)}</span>
+          ${isPrimary ? '<span style="color: var(--nozzle); font-size: 10px; font-weight: 700; margin-left: 2px;" title="Subcategoria Principal">★</span>' : ''}
+        `;
 
-        subSelect.appendChild(opt);
+        const cb = chipLabel.querySelector('input[type="checkbox"]');
+        cb.addEventListener('change', () => {
+          if (cb.checked) {
+            if (!selectedSubcategories.includes(subSlug)) {
+              selectedSubcategories.push(subSlug);
+            }
+          } else {
+            selectedSubcategories = selectedSubcategories.filter(s => s !== subSlug);
+          }
+          updateHiddenInputs();
+          syncCategoriesUI(false);
+          document.dispatchEvent(new CustomEvent('product-category-updated'));
+        });
+
+        chipsGrid.appendChild(chipLabel);
       });
-    } else {
-      subSelect.disabled = false;
-      const opt = document.createElement('option');
-      opt.value = 'geral';
-      opt.textContent = 'Geral';
-      opt.selected = true;
-      subSelect.appendChild(opt);
+
+      groupDiv.appendChild(chipsGrid);
+      subContainer.appendChild(groupDiv);
+    });
+  }
+
+  function syncCategoriesUI(rebuildSubcategories = true) {
+    updateHiddenInputs();
+
+    const cards = grid.querySelectorAll('.cat-card-item');
+    cards.forEach(card => {
+      const slug = card.getAttribute('data-cat-slug');
+      const checkbox = card.querySelector('.cat-checkbox');
+      const isSelected = selectedCategories.includes(slug);
+      const isPrimary = selectedCategories.length > 0 && selectedCategories[0] === slug;
+
+      if (checkbox) checkbox.checked = isSelected;
+
+      card.classList.toggle('selected', isSelected);
+      card.classList.toggle('is-primary', isPrimary);
+
+      const indContainer = card.querySelector('.cat-card-primary-indicator');
+      if (indContainer) {
+        if (isPrimary) {
+          indContainer.innerHTML = '<span class="cat-primary-badge"><i class="fas fa-star"></i> Principal</span>';
+        } else if (isSelected) {
+          indContainer.innerHTML = `
+            <button type="button" class="btn-make-primary-cat" data-cat-slug="${slug}" title="Definir esta como categoria primária">
+              <i class="far fa-star"></i> Tornar Principal
+            </button>
+          `;
+          const btnMakePrimary = indContainer.querySelector('.btn-make-primary-cat');
+          if (btnMakePrimary) {
+            btnMakePrimary.addEventListener('click', (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              // Move slug para primeira posição
+              selectedCategories = [slug, ...selectedCategories.filter(s => s !== slug)];
+              syncCategoriesUI(true);
+              document.dispatchEvent(new CustomEvent('product-category-updated'));
+            });
+          }
+        } else {
+          indContainer.innerHTML = '';
+        }
+      }
+    });
+
+    if (rebuildSubcategories) {
+      renderSubcategoriesContainer();
     }
   }
 
-  catSelect.addEventListener('change', () => {
-    renderSubcategories(catSelect.value);
-    document.dispatchEvent(new CustomEvent('product-category-updated'));
+  // Configura listeners nos cards de categoria
+  const cards = grid.querySelectorAll('.cat-card-item');
+  cards.forEach(card => {
+    const slug = card.getAttribute('data-cat-slug');
+    const checkbox = card.querySelector('.cat-checkbox');
+
+    function toggleCategory(checked) {
+      if (checked) {
+        if (!selectedCategories.includes(slug)) {
+          selectedCategories.push(slug);
+        }
+      } else {
+        selectedCategories = selectedCategories.filter(s => s !== slug);
+        // Remove subcategorias que pertenciam exclusivamente a essa categoria desmarcada
+        const catObj = categorias.find(c => c.slug === slug);
+        if (catObj && Array.isArray(catObj.subcategorias)) {
+          const removedSubs = catObj.subcategorias.map(sub => typeof sub === 'object' ? sub.slug : sub);
+          selectedSubcategories = selectedSubcategories.filter(s => !removedSubs.includes(s));
+        }
+      }
+      syncCategoriesUI(true);
+      document.dispatchEvent(new CustomEvent('product-category-updated'));
+    }
+
+    if (checkbox) {
+      checkbox.addEventListener('change', () => {
+        toggleCategory(checkbox.checked);
+      });
+    }
+
+    card.addEventListener('click', (e) => {
+      // Ignora clique se foi no botão "Tornar Principal" ou no checkbox diretamente
+      if (e.target.closest('.btn-make-primary-cat') || e.target === checkbox || e.target.closest('.cat-card-checkbox-label')) {
+        return;
+      }
+      if (checkbox) {
+        checkbox.checked = !checkbox.checked;
+        toggleCategory(checkbox.checked);
+      }
+    });
   });
 
-  subSelect.addEventListener('change', () => {
-    document.dispatchEvent(new CustomEvent('product-category-updated'));
-  });
-
-  // Carregamento inicial (em caso de edição ou clonagem)
-  const initCat = (initialCatEl ? initialCatEl.value : '') || catSelect.value;
-  const initSub = initialSubEl ? initialSubEl.value : '';
-
-  if (initCat) {
-    catSelect.value = initCat;
-    renderSubcategories(initCat, initSub);
-  }
+  // Renderização inicial
+  syncCategoriesUI(true);
 }
 
 // =============================================================================
@@ -518,10 +709,36 @@ function initLivePreview() {
 
   function updatePreview() {
     if (prevTitle && nomeInput) prevTitle.textContent = nomeInput.value.trim() || 'Nome do Produto';
-    if (prevCat && catSelect) {
-      const catText = catSelect.selectedIndex >= 0 && catSelect.value ? catSelect.options[catSelect.selectedIndex].text : 'ENGENHARIA';
-      const subText = subSelect && subSelect.selectedIndex >= 0 && subSelect.value ? subSelect.options[subSelect.selectedIndex].text : '';
-      prevCat.textContent = `${catText.toUpperCase()} ${subText ? '· ' + subText.toUpperCase() : ''}`;
+    if (prevCat) {
+      const checkedCatCards = Array.from(document.querySelectorAll('#categorias-selector-grid .cat-card-item.selected'));
+      if (checkedCatCards.length > 0) {
+        const primaryCard = document.querySelector('#categorias-selector-grid .cat-card-item.is-primary');
+        const otherCards = checkedCatCards.filter(c => c !== primaryCard);
+        const orderedCards = primaryCard ? [primaryCard, ...otherCards] : checkedCatCards;
+
+        const catNames = orderedCards.map(c => {
+          const lbl = c.querySelector('.cat-card-checkbox-label span');
+          return lbl ? lbl.textContent.trim().toUpperCase() : c.getAttribute('data-cat-slug').toUpperCase();
+        });
+
+        const checkedSubChips = Array.from(document.querySelectorAll('#subcategorias-container .subcat-chip input[type="checkbox"]:checked'));
+        const subNames = checkedSubChips.map(cb => {
+          const span = cb.closest('.subcat-chip').querySelector('span');
+          return span ? span.textContent.trim().toUpperCase() : cb.value.toUpperCase();
+        });
+
+        let catBreadcrumb = catNames.join(' · ');
+        if (subNames.length > 0) {
+          catBreadcrumb += ` (${subNames.slice(0, 2).join(', ')}${subNames.length > 2 ? '...' : ''})`;
+        }
+        prevCat.textContent = catBreadcrumb;
+      } else if (catSelect && catSelect.selectedIndex >= 0 && catSelect.value) {
+        const catText = catSelect.options[catSelect.selectedIndex].text;
+        const subText = subSelect && subSelect.selectedIndex >= 0 && subSelect.value ? subSelect.options[subSelect.selectedIndex].text : '';
+        prevCat.textContent = `${catText.toUpperCase()} ${subText ? '· ' + subText.toUpperCase() : ''}`;
+      } else {
+        prevCat.textContent = 'ENGENHARIA · STARLINK';
+      }
     }
     if (prevSummary && resumoInput) prevSummary.textContent = resumoInput.value.trim() || 'Resumo curto destacando a utilidade da peça.';
 
@@ -799,15 +1016,18 @@ function initPublishPipeline() {
 
       if (data.success) {
         if (progressBar) progressBar.style.width = '100%';
-        addTerminalLog('DEPLOY', 'SUCCESS', `🚀 Produto '${data.product.nome}' publicado com sucesso!`);
+        addTerminalLog('DEPLOY', 'SUCCESS', `🚀 Produto '${data.product.nome}' salvo com sucesso!`);
         if (data.commit_hash) {
           addTerminalLog('GIT', 'SUCCESS', `Commit registrado: ${data.commit_hash} - ${data.commit_message}`);
         }
         if (data.pushed) {
           addTerminalLog('VERCEL', 'SUCCESS', 'Repositório atualizado no GitHub! O Vercel está compilando o novo catálogo.');
+          if (btnViewSite) btnViewSite.style.display = 'inline-flex';
+        } else {
+          addTerminalLog('BATCH', 'SUCCESS', '💾 Salvo localmente na Fila de Publicação! Você pode cadastrar/editar mais itens e publicar todos juntos pelo botão no rodapé.');
         }
-        if (btnViewSite) btnViewSite.style.display = 'inline-flex';
         if (btnRetryPush) btnRetryPush.style.display = 'none';
+        if (window.refreshBatchStatus) window.refreshBatchStatus();
       } else {
         if (progressBar) {
           progressBar.style.width = '100%';
@@ -965,6 +1185,9 @@ function initCatalogActions() {
           }
           if (data.pushed) {
             addTerminalLog('VERCEL', 'SUCCESS', 'Repositório atualizado no GitHub! O Vercel está reconstruindo o catálogo.');
+            if (btnViewSite) btnViewSite.style.display = 'inline-flex';
+          } else {
+            addTerminalLog('BATCH', 'SUCCESS', '📦 Remoção gravada na Fila Local! Use o botão "Publicar Catálogo na Vercel" no rodapé para consolidar o deploy.');
           }
 
           // Remove linha da tabela com transição suave
@@ -983,8 +1206,8 @@ function initCatalogActions() {
             }, 400);
           }
 
-          if (btnViewSite) btnViewSite.style.display = 'inline-flex';
           if (btnRetryPush) btnRetryPush.style.display = 'none';
+          if (window.refreshBatchStatus) window.refreshBatchStatus();
         } else {
           if (progressBar) {
             progressBar.style.width = '100%';
@@ -1063,7 +1286,12 @@ function initCatalogActions() {
           }
           if (data.pushed) {
             addTerminalLog('VERCEL', 'SUCCESS', 'Repositório atualizado no GitHub! O Vercel está reconstruindo o catálogo.');
+            if (btnViewSite) btnViewSite.style.display = 'inline-flex';
+          } else {
+            addTerminalLog('BATCH', 'SUCCESS', '📦 Alteração gravada na Fila Local! Use o botão "Publicar Catálogo na Vercel" no rodapé para consolidar o deploy.');
           }
+
+          if (window.refreshBatchStatus) window.refreshBatchStatus();
 
           // Atualiza a interface da linha sem precisar recarregar a página
           const row = document.querySelector(`.produto-linha[data-slug="${slug}"]`);
@@ -1171,5 +1399,143 @@ function initGitPullAction() {
       btnPull.innerHTML = origHtml;
     }
   });
+}
+
+// =============================================================================
+// 13. Barra Fixa de Publicação em Lote (Sticky Batch Bar & Deploy Consolidado)
+// =============================================================================
+function initBatchBar() {
+  const bar = document.getElementById('sticky-batch-bar');
+  const countEl = document.getElementById('batch-bar-count');
+  const breakdownEl = document.getElementById('batch-bar-breakdown');
+  const btnPublish = document.getElementById('btn-batch-publish');
+  const btnDiscard = document.getElementById('btn-batch-discard');
+  const modalDiscard = document.getElementById('modal-confirm-discard');
+  const btnConfirmDiscard = document.getElementById('btn-confirm-discard');
+
+  window.fecharModalConfirmDiscard = function() {
+    if (modalDiscard) modalDiscard.classList.remove('active');
+  };
+
+  async function refreshBatchStatus() {
+    try {
+      const res = await fetch('/api/batch/status');
+      const data = await res.json();
+      if (bar) {
+        if (data.has_pending) {
+          bar.classList.add('is-visible');
+        } else {
+          bar.classList.remove('is-visible');
+        }
+      }
+      if (countEl) countEl.textContent = data.total_pending || 0;
+      if (breakdownEl) breakdownEl.textContent = data.summary_text || '';
+    } catch (e) {
+      console.warn('Falha ao consultar status de lote pendente:', e);
+    }
+  }
+
+  // Descartar rascunhos / fila local
+  if (btnDiscard) {
+    btnDiscard.addEventListener('click', () => {
+      if (modalDiscard) modalDiscard.classList.add('active');
+    });
+  }
+
+  if (btnConfirmDiscard) {
+    btnConfirmDiscard.addEventListener('click', async () => {
+      btnConfirmDiscard.disabled = true;
+      btnConfirmDiscard.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Descartando...';
+
+      try {
+        const res = await fetch('/api/batch/discard', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          window.fecharModalConfirmDiscard();
+          alert('Rascunhos locais descartados com sucesso! O catálogo foi restaurado para o estado sincronizado do GitHub.');
+          window.location.reload();
+        } else {
+          alert(`Erro ao descartar rascunhos: ${data.error}`);
+        }
+      } catch (err) {
+        alert(`Erro de comunicação: ${err.message}`);
+      } finally {
+        btnConfirmDiscard.disabled = false;
+        btnConfirmDiscard.innerHTML = '<i class="fas fa-trash-arrow-up"></i> Sim, Descartar Alterações';
+      }
+    });
+  }
+
+  // Publicar lote consolidado no GitHub & Vercel
+  if (btnPublish) {
+    btnPublish.addEventListener('click', async () => {
+      openDeployModal(
+        'Publicação em Lote no Catálogo (GitHub & Vercel)',
+        'Consolidando alterações, validando regras de negócio e disparando deploy...'
+      );
+      addTerminalLog('BATCH_INIT', 'INFO', 'Iniciando pipeline de publicação em lote consolidado...');
+
+      const progressBar = document.getElementById('deploy-progress-fill');
+      const btnClose = document.getElementById('modal-btn-close');
+      const btnViewSite = document.getElementById('modal-btn-view-site');
+      const btnRetryPush = document.getElementById('modal-btn-retry-push');
+
+      if (progressBar) progressBar.style.width = '30%';
+
+      try {
+        const res = await fetch('/api/batch/publish', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+
+        if (data.logs && Array.isArray(data.logs)) {
+          data.logs.forEach(log => {
+            addTerminalLog(log.step, log.status, log.message, log.detail);
+          });
+        }
+
+        if (data.success) {
+          if (progressBar) progressBar.style.width = '100%';
+          addTerminalLog('BATCH', 'SUCCESS', '🚀 Lote publicado com sucesso no GitHub e Vercel!');
+          if (data.commit_hash) {
+            addTerminalLog('GIT', 'SUCCESS', `Commit registrado: ${data.commit_hash} - ${data.commit_message}`);
+          }
+          if (data.pushed) {
+            addTerminalLog('VERCEL', 'SUCCESS', 'Repositório atualizado no GitHub! O Vercel está compilando todos os produtos.');
+          }
+          if (bar) bar.classList.remove('is-visible');
+          if (btnViewSite) btnViewSite.style.display = 'inline-flex';
+          if (btnRetryPush) btnRetryPush.style.display = 'none';
+        } else {
+          if (progressBar) {
+            progressBar.style.width = '100%';
+            progressBar.style.background = 'var(--error)';
+          }
+          addTerminalLog('ERROR', 'ERROR', `Falha na publicação do lote: ${data.error || 'Erro desconhecido.'}`);
+
+          if (data.error && (data.error.includes('git push') || data.error.includes('push') || data.error.includes('remote rejected'))) {
+            if (btnRetryPush) {
+              btnRetryPush.style.display = 'inline-flex';
+              btnRetryPush.disabled = false;
+              btnRetryPush.innerHTML = '<i class="fas fa-arrows-rotate"></i> Tentar Push Novamente';
+            }
+          }
+        }
+      } catch (err) {
+        if (progressBar) progressBar.style.background = 'var(--error)';
+        addTerminalLog('NETWORK', 'ERROR', `Erro de comunicação com o servidor: ${err.message}`);
+      } finally {
+        if (btnClose) btnClose.style.display = 'inline-flex';
+        refreshBatchStatus();
+      }
+    });
+  }
+
+  // Torna função disponível globalmente para outras ações
+  window.refreshBatchStatus = refreshBatchStatus;
+
+  // Consulta status de lote inicial após carregamento
+  setTimeout(refreshBatchStatus, 500);
 }
 
