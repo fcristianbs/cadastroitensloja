@@ -18,7 +18,7 @@
 <div class="form-grid-3" style="margin-bottom: 1.5rem;">
   <div class="card" style="margin-bottom: 0;">
     <div style="font-size: 0.8rem; color: var(--ink-muted); text-transform: uppercase; font-family: var(--font-mono); letter-spacing: 0.05em;">Total de Peças</div>
-    <div style="font-family: var(--font-display); font-size: 1.8rem; font-weight: 700; color: var(--nozzle); margin-top: 0.25rem;">{{ total }}</div>
+    <div id="stat-total" style="font-family: var(--font-display); font-size: 1.8rem; font-weight: 700; color: var(--nozzle); margin-top: 0.25rem;">{{ total }}</div>
   </div>
 
   <div class="card" style="margin-bottom: 0;">
@@ -27,8 +27,13 @@
   </div>
 
   <div class="card" style="margin-bottom: 0;">
-    <div style="font-size: 0.8rem; color: var(--ink-muted); text-transform: uppercase; font-family: var(--font-mono); letter-spacing: 0.05em;">Por Categoria</div>
-    <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; flex-wrap: wrap;">
+    <div style="font-size: 0.8rem; color: var(--ink-muted); text-transform: uppercase; font-family: var(--font-mono); letter-spacing: 0.05em;">Status & Categorias</div>
+    <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; align-items: center;">
+      {% if esgotados and esgotados > 0 %}
+        <span class="brand-tag" style="font-size: 11px; color: var(--error); border-color: var(--error-border); background: var(--error-soft);">
+          <i class="fas fa-ban" style="margin-right: 3px;"></i>Esgotados: <strong>{{ esgotados }}</strong>
+        </span>
+      {% endif %}
       {% for cat, count in categorias_count.items() %}
         <span class="brand-tag" style="font-size: 11px;">{{ cat }}: <strong>{{ count }}</strong></span>
       {% endfor %}
@@ -36,7 +41,7 @@
   </div>
 </div>
 
-<!-- Barra de Busca -->
+<!-- Barra de Busca e Filtros -->
 <div class="card">
   <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
     <div style="flex: 1; min-width: 250px;">
@@ -47,6 +52,11 @@
       {% for cat in categorias %}
         <option value="{{ cat.slug }}">{{ cat.nome }}</option>
       {% endfor %}
+    </select>
+    <select id="filtro-status" class="form-control" style="width: 170px;">
+      <option value="">Todos os Status</option>
+      <option value="ativos">Apenas Ativos</option>
+      <option value="esgotados">Apenas Esgotados</option>
     </select>
   </div>
 </div>
@@ -61,13 +71,19 @@
         <th>Categoria</th>
         <th>Material / Uso</th>
         <th>Preço</th>
-        <th>Selo</th>
+        <th>Selo / Status</th>
         <th style="text-align: right;">Ações</th>
       </tr>
     </thead>
     <tbody>
       {% for p in produtos %}
-        <tr class="produto-linha" data-nome="{{ p.nome|lower }}" data-slug="{{ p.slug }}" data-categoria="{{ p.categoria }}" data-material="{{ p.material|lower }}">
+        {% set is_esgotado = (p.esgotado or p.selo == 'ESGOTADO') %}
+        <tr class="produto-linha {% if is_esgotado %}is-esgotado{% endif %}" 
+            data-nome="{{ p.nome|lower }}" 
+            data-slug="{{ p.slug }}" 
+            data-categoria="{{ p.categoria }}" 
+            data-material="{{ p.material|lower }}"
+            data-esgotado="{{ 'true' if is_esgotado else 'false' }}">
           <td>
             {% if p.imagens and p.imagens[0].src %}
               <img src="{{ p.imagens[0].src }}" alt="{{ p.nome }}" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover; background: var(--surface-overlay); border: 1px solid var(--line);">
@@ -100,8 +116,13 @@
               <span style="color: var(--ink-faint); font-size: 0.85rem;">Sob consulta</span>
             {% endif %}
           </td>
-          <td>
-            {% if p.selo %}
+          <td class="col-selo">
+            {% if is_esgotado %}
+              <span class="badge-esgotado" style="display: inline-flex; align-items: center; gap: 4px; background: var(--error-soft); color: var(--error); border: 1px solid var(--error-border); font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 3px 8px; border-radius: var(--radius-sm); text-transform: uppercase;">
+                <i class="fas fa-ban"></i>
+                <span>ESGOTADO</span>
+              </span>
+            {% elif p.selo %}
               <span class="preview-pill-selo" style="position: static; display: inline-block;">{{ p.selo }}</span>
             {% elif p.destaque %}
               <span class="brand-tag" style="color: var(--cad); border-color: var(--cad-border);">DESTAQUE</span>
@@ -110,17 +131,47 @@
             {% endif %}
           </td>
           <td style="text-align: right; white-space: nowrap;">
-            <a href="{{ url_for('main.editar_produto', slug=p.slug) }}" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem; color: var(--cad); border-color: var(--cad-border);" title="Editar produto existente">
-              <i class="fas fa-edit"></i>
-              <span>Editar</span>
-            </a>
-            <a href="{{ url_for('main.index', clone=p.slug) }}" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem;" title="Usar este produto como modelo para novo cadastro">
-              <i class="fas fa-copy"></i>
-              <span>Duplicar</span>
-            </a>
-            <a href="{{ config.VERCEL_DEPLOY_URL }}/produto/{{ p.slug }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem;" title="Ver produto publicado no site">
-              <i class="fas fa-external-link-alt"></i>
-            </a>
+            <div style="display: inline-flex; gap: 0.35rem; align-items: center;">
+              <!-- Editar -->
+              <a href="{{ url_for('main.editar_produto', slug=p.slug) }}" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem; color: var(--cad); border-color: var(--cad-border);" title="Editar produto existente">
+                <i class="fas fa-edit"></i>
+                <span>Editar</span>
+              </a>
+
+              <!-- Duplicar -->
+              <a href="{{ url_for('main.index', clone=p.slug) }}" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem;" title="Usar este produto como modelo para novo cadastro">
+                <i class="fas fa-copy"></i>
+                <span>Duplicar</span>
+              </a>
+
+              <!-- Esgotar / Reativar -->
+              <button type="button" 
+                      class="btn btn-outline btn-toggle-esgotado" 
+                      data-slug="{{ p.slug }}" 
+                      data-nome="{{ p.nome }}" 
+                      data-esgotado="{{ 'true' if is_esgotado else 'false' }}"
+                      style="padding: 0.35rem 0.65rem; font-size: 0.8rem; {% if is_esgotado %}color: var(--ok); border-color: var(--ok-border);{% else %}color: var(--warning); border-color: var(--warning-soft);{% endif %}" 
+                      title="{{ 'Reativar produto no catálogo' if is_esgotado else 'Marcar como ESGOTADO no catálogo' }}">
+                <i class="fas {{ 'fa-box-open' if is_esgotado else 'fa-ban' }}"></i>
+                <span>{{ 'Reativar' if is_esgotado else 'Esgotar' }}</span>
+              </button>
+
+              <!-- Excluir -->
+              <button type="button" 
+                      class="btn btn-outline btn-excluir-produto" 
+                      data-slug="{{ p.slug }}" 
+                      data-nome="{{ p.nome }}" 
+                      style="padding: 0.35rem 0.65rem; font-size: 0.8rem; color: var(--error); border-color: var(--error-border);" 
+                      title="Excluir produto e fotos do catálogo">
+                <i class="fas fa-trash-can"></i>
+                <span>Excluir</span>
+              </button>
+
+              <!-- Ver no Site -->
+              <a href="{{ config.VERCEL_DEPLOY_URL }}/produto/{{ p.slug }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="padding: 0.35rem 0.65rem; font-size: 0.8rem;" title="Ver produto publicado no site">
+                <i class="fas fa-external-link-alt"></i>
+              </a>
+            </div>
           </td>
         </tr>
       {% endfor %}
@@ -128,27 +179,126 @@
   </table>
 </div>
 
+<!-- =========================================================================
+     MODAL DE CONFIRMAÇÃO DE EXCLUSÃO
+     ========================================================================= -->
+<div id="modal-confirm-delete" class="modal-backdrop">
+  <div class="modal-dialog" style="max-width: 520px;">
+    <div class="modal-header">
+      <div class="modal-title" style="color: var(--error);">
+        <i class="fas fa-trash-can"></i>
+        <span>Excluir Produto do Catálogo</span>
+      </div>
+      <button type="button" onclick="fecharModalConfirmDelete()" style="background: none; border: none; color: var(--ink-muted); font-size: 1.25rem; cursor: pointer;">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <p style="font-size: 0.95rem; color: var(--ink); margin-bottom: 0.75rem;">
+        Tem certeza de que deseja excluir permanentemente o produto:
+      </p>
+
+      <div style="background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 1rem;">
+        <div id="delete-prod-nome" style="font-weight: 700; font-size: 1.05rem; color: var(--ink);"></div>
+        <div id="delete-prod-slug" style="font-family: var(--font-mono); font-size: 12px; color: var(--ink-muted); margin-top: 3px;"></div>
+      </div>
+
+      <div style="background: var(--error-soft); border: 1px solid var(--error-border); border-radius: var(--radius-md); padding: 0.85rem 1rem; font-size: 0.85rem; color: var(--error); line-height: 1.5;">
+        <i class="fas fa-triangle-exclamation" style="margin-right: 4px;"></i>
+        Esta ação removerá o produto de <code>data/produtos.json</code>, apagará as fotos associadas em <code>static/img/produtos/</code> e <code>public/static/img/produtos/</code>, e executará commit & push no GitHub para disparar o redeploy no Vercel.
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+          <input type="checkbox" id="delete-auto-push" checked style="accent-color: var(--nozzle); width: 16px; height: 16px;">
+          <span>Realizar Push automático para GitHub (<code>origin/main</code>)</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="fecharModalConfirmDelete()">Cancelar</button>
+      <button type="button" class="btn" id="btn-confirm-delete" style="background: var(--error); color: #fff;">
+        <i class="fas fa-trash-can"></i>
+        <span>Sim, Excluir Produto</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================================
+     MODAL DE CONFIRMAÇÃO DE ALTERAR DISPONIBILIDADE (ESGOTAR / REATIVAR)
+     ========================================================================= -->
+<div id="modal-confirm-toggle" class="modal-backdrop">
+  <div class="modal-dialog" style="max-width: 520px;">
+    <div class="modal-header">
+      <div class="modal-title" id="toggle-modal-title">
+        <i class="fas fa-boxes-stacked" style="color: var(--warning);"></i>
+        <span id="toggle-modal-title-text">Alterar Disponibilidade</span>
+      </div>
+      <button type="button" onclick="fecharModalConfirmToggle()" style="background: none; border: none; color: var(--ink-muted); font-size: 1.25rem; cursor: pointer;">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <p id="toggle-modal-msg" style="font-size: 0.95rem; color: var(--ink); margin-bottom: 0.75rem;">
+        Deseja alterar o status deste produto?
+      </p>
+
+      <div style="background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 1rem;">
+        <div id="toggle-prod-nome" style="font-weight: 700; font-size: 1.05rem; color: var(--ink);"></div>
+        <div id="toggle-prod-slug" style="font-family: var(--font-mono); font-size: 12px; color: var(--ink-muted); margin-top: 3px;"></div>
+      </div>
+
+      <div id="toggle-modal-info" style="border-radius: var(--radius-md); padding: 0.85rem 1rem; font-size: 0.85rem; line-height: 1.5;">
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+          <input type="checkbox" id="toggle-auto-push" checked style="accent-color: var(--nozzle); width: 16px; height: 16px;">
+          <span>Realizar Push automático para GitHub (<code>origin/main</code>)</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="fecharModalConfirmToggle()">Cancelar</button>
+      <button type="button" class="btn" id="btn-confirm-toggle">
+        <span id="btn-confirm-toggle-text">Confirmar</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
-  // Filtro instantâneo no cliente
+  // Filtro instantâneo no cliente (Busca, Categoria e Status)
   document.addEventListener('DOMContentLoaded', () => {
     const inputBusca = document.getElementById('filtro-busca');
     const selectCat = document.getElementById('filtro-categoria');
+    const selectStatus = document.getElementById('filtro-status');
     const linhas = document.querySelectorAll('.produto-linha');
 
     function filtrar() {
       const termo = (inputBusca.value || '').toLowerCase().trim();
       const cat = selectCat.value;
+      const status = selectStatus.value;
 
       linhas.forEach(linha => {
-        const nome = linha.getAttribute('data-nome');
-        const slug = linha.getAttribute('data-slug');
-        const material = linha.getAttribute('data-material');
-        const categoria = linha.getAttribute('data-categoria');
+        const nome = linha.getAttribute('data-nome') || '';
+        const slug = linha.getAttribute('data-slug') || '';
+        const material = linha.getAttribute('data-material') || '';
+        const categoria = linha.getAttribute('data-categoria') || '';
+        const isEsgotado = linha.getAttribute('data-esgotado') === 'true';
 
         const matchTermo = !termo || nome.includes(termo) || slug.includes(termo) || material.includes(termo);
         const matchCat = !cat || categoria === cat;
+        
+        let matchStatus = true;
+        if (status === 'ativos') {
+          matchStatus = !isEsgotado;
+        } else if (status === 'esgotados') {
+          matchStatus = isEsgotado;
+        }
 
-        if (matchTermo && matchCat) {
+        if (matchTermo && matchCat && matchStatus) {
           linha.style.display = '';
         } else {
           linha.style.display = 'none';
@@ -156,9 +306,9 @@
       });
     }
 
-    inputBusca.addEventListener('input', filtrar);
-    selectCat.addEventListener('change', filtrar);
+    if (inputBusca) inputBusca.addEventListener('input', filtrar);
+    if (selectCat) selectCat.addEventListener('change', filtrar);
+    if (selectStatus) selectStatus.addEventListener('change', filtrar);
   });
 </script>
 {% endblock %}
-

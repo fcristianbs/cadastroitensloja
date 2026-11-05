@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initLivePreview();
   initPublishPipeline();
   initGitPullAction();
+  initCatalogActions();
 });
 
 // =============================================================================
@@ -594,18 +595,92 @@ function initLivePreview() {
 }
 
 // =============================================================================
-// 9. Pipeline de Publicação e Deploy com Modal de Terminal
+// 9. Funções Globais de Terminal, Logs e Modais
+// =============================================================================
+
+function escapeHtml(text) {
+  return (text || '').toString().replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[m]);
+}
+
+function addTerminalLog(step, status, message, detail = '') {
+  const terminal = document.getElementById('terminal-log-content');
+  if (!terminal) return;
+  
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  const time = new Date().toLocaleTimeString('pt-BR');
+  entry.innerHTML = `
+    <span class="log-time">[${time}]</span>
+    <span class="log-step">[${escapeHtml(step)}]</span>
+    <span class="log-msg ${escapeHtml(status)}">${escapeHtml(message)}</span>
+  `;
+  if (detail) {
+    const detailPre = document.createElement('pre');
+    detailPre.style.margin = '4px 0 8px 30px';
+    detailPre.style.color = '#8C99A6';
+    detailPre.style.fontSize = '11px';
+    detailPre.style.whiteSpace = 'pre-wrap';
+    detailPre.textContent = detail;
+    entry.appendChild(detailPre);
+  }
+  terminal.appendChild(entry);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function openDeployModal(title = 'Pipeline de Publicação Git', desc = 'Executando sincronização, alterações e deploy automatizado...') {
+  const modal = document.getElementById('deploy-modal');
+  const terminal = document.getElementById('terminal-log-content');
+  const progressBar = document.getElementById('deploy-progress-fill');
+  const titleEl = document.getElementById('deploy-modal-title-text');
+  const descEl = document.getElementById('deploy-modal-desc-text');
+  const btnClose = document.getElementById('modal-btn-close');
+  const btnViewSite = document.getElementById('modal-btn-view-site');
+  const btnRetryPush = document.getElementById('modal-btn-retry-push');
+
+  if (titleEl) titleEl.textContent = title;
+  if (descEl) descEl.textContent = desc;
+  if (terminal) terminal.innerHTML = '';
+  if (progressBar) {
+    progressBar.style.width = '10%';
+    progressBar.style.background = 'linear-gradient(90deg, var(--nozzle), var(--cad))';
+  }
+  if (btnClose) btnClose.style.display = 'none';
+  if (btnViewSite) btnViewSite.style.display = 'none';
+  if (btnRetryPush) btnRetryPush.style.display = 'none';
+  if (modal) modal.classList.add('active');
+}
+
+function closeDeployModal() {
+  const modal = document.getElementById('deploy-modal');
+  if (modal) modal.classList.remove('active');
+}
+
+window.fecharModalConfirmDelete = function() {
+  const modal = document.getElementById('modal-confirm-delete');
+  if (modal) modal.classList.remove('active');
+};
+
+window.fecharModalConfirmToggle = function() {
+  const modal = document.getElementById('modal-confirm-toggle');
+  if (modal) modal.classList.remove('active');
+};
+
+// =============================================================================
+// 10. Pipeline de Publicação de Produto (Cadastro e Edição)
 // =============================================================================
 function initPublishPipeline() {
   const form = document.getElementById('product-form');
   const modal = document.getElementById('deploy-modal');
-  const terminal = document.getElementById('terminal-log-content');
   const progressBar = document.getElementById('deploy-progress-fill');
   const btnClose = document.getElementById('modal-btn-close');
   const btnViewSite = document.getElementById('modal-btn-view-site');
   const btnRetryPush = document.getElementById('modal-btn-retry-push');
 
-  if (!form || !modal || !terminal) return;
+  if (btnClose) {
+    btnClose.addEventListener('click', closeDeployModal);
+  }
 
   if (btnRetryPush) {
     btnRetryPush.addEventListener('click', async () => {
@@ -632,6 +707,8 @@ function initPublishPipeline() {
       }
     });
   }
+
+  if (!form) return;
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -693,11 +770,11 @@ function initPublishPipeline() {
     formData.set('cores_json', JSON.stringify(cores));
     formData.set('instalacao_json', JSON.stringify(instalacao));
 
-    // Abre o Modal
-    modal.classList.add('active');
-    terminal.innerHTML = '';
-    if (progressBar) progressBar.style.width = '15%';
-
+    // Abre o Modal com Terminal
+    openDeployModal(
+      'Pipeline de Publicação Git',
+      'Executando validações, sincronização e deploy automatizado para o Vercel...'
+    );
     addTerminalLog('INIT', 'INFO', 'Iniciando pipeline de automação Git & Publicação...');
 
     try {
@@ -738,7 +815,6 @@ function initPublishPipeline() {
         }
         addTerminalLog('ERROR', 'ERROR', `Falha no cadastro: ${data.error || 'Erro desconhecido.'}`);
         
-        // Se a falha foi especificamente no git push, exibe botão para tentar enviar novamente
         if (data.error && (data.error.includes('git push') || data.error.includes('push') || data.error.includes('remote rejected'))) {
           if (btnRetryPush) {
             btnRetryPush.style.display = 'inline-flex';
@@ -754,43 +830,321 @@ function initPublishPipeline() {
       if (btnClose) btnClose.style.display = 'inline-flex';
     }
   });
+}
 
-  function addTerminalLog(step, status, message, detail = '') {
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
-    const time = new Date().toLocaleTimeString('pt-BR');
-    entry.innerHTML = `
-      <span class="log-time">[${time}]</span>
-      <span class="log-step">[${step}]</span>
-      <span class="log-msg ${status}">${escapeHtml(message)}</span>
-    `;
-    if (detail) {
-      const detailPre = document.createElement('pre');
-      detailPre.style.margin = '4px 0 8px 30px';
-      detailPre.style.color = '#8C99A6';
-      detailPre.style.fontSize = '11px';
-      detailPre.textContent = detail;
-      entry.appendChild(detailPre);
-    }
-    terminal.appendChild(entry);
-    terminal.scrollTop = terminal.scrollHeight;
-  }
+// =============================================================================
+// 11. Ações no Catálogo Atual (Excluir e Marcar Esgotado / Reativar)
+// =============================================================================
+function initCatalogActions() {
+  const modalDelete = document.getElementById('modal-confirm-delete');
+  const modalToggle = document.getElementById('modal-confirm-toggle');
+  
+  const deleteNameEl = document.getElementById('delete-prod-nome');
+  const deleteSlugEl = document.getElementById('delete-prod-slug');
+  const deleteAutoPush = document.getElementById('delete-auto-push');
+  const btnConfirmDelete = document.getElementById('btn-confirm-delete');
 
-  if (btnClose) {
-    btnClose.addEventListener('click', () => {
-      modal.classList.remove('active');
+  const toggleNameEl = document.getElementById('toggle-prod-nome');
+  const toggleSlugEl = document.getElementById('toggle-prod-slug');
+  const toggleTitleText = document.getElementById('toggle-modal-title-text');
+  const toggleMsgEl = document.getElementById('toggle-modal-msg');
+  const toggleInfoEl = document.getElementById('toggle-modal-info');
+  const toggleBtnText = document.getElementById('btn-confirm-toggle-text');
+  const toggleAutoPush = document.getElementById('toggle-auto-push');
+  const btnConfirmToggle = document.getElementById('btn-confirm-toggle');
+
+  let pendingDelete = null;
+  let pendingToggle = null;
+
+  // Botões de Exclusão
+  document.querySelectorAll('.btn-excluir-produto').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const slug = btn.getAttribute('data-slug');
+      const nome = btn.getAttribute('data-nome') || slug;
+      pendingDelete = { slug, nome, button: btn };
+
+      if (deleteNameEl) deleteNameEl.textContent = nome;
+      if (deleteSlugEl) deleteSlugEl.textContent = slug;
+      if (modalDelete) modalDelete.classList.add('active');
+    });
+  });
+
+  // Botões de Esgotar / Reativar
+  document.querySelectorAll('.btn-toggle-esgotado').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const slug = btn.getAttribute('data-slug');
+      const nome = btn.getAttribute('data-nome') || slug;
+      const isEsgotado = btn.getAttribute('data-esgotado') === 'true';
+      pendingToggle = { slug, nome, isEsgotado, button: btn };
+
+      if (toggleNameEl) toggleNameEl.textContent = nome;
+      if (toggleSlugEl) toggleSlugEl.textContent = slug;
+
+      if (isEsgotado) {
+        if (toggleTitleText) toggleTitleText.textContent = 'Reativar Produto no Catálogo';
+        if (toggleMsgEl) toggleMsgEl.textContent = `Deseja reativar o produto '${nome}' no catálogo?`;
+        if (toggleInfoEl) {
+          toggleInfoEl.style.background = 'var(--ok-soft)';
+          toggleInfoEl.style.color = 'var(--ok)';
+          toggleInfoEl.style.border = '1px solid var(--ok-border)';
+          toggleInfoEl.innerHTML = '<i class="fas fa-check-circle" style="margin-right: 4px;"></i> O produto voltará a ficar disponível para compra e o selo anterior será restaurado.';
+        }
+        if (toggleBtnText) toggleBtnText.textContent = 'Reativar Produto';
+        if (btnConfirmToggle) {
+          btnConfirmToggle.style.background = 'var(--ok)';
+          btnConfirmToggle.style.color = '#0c1014';
+        }
+      } else {
+        if (toggleTitleText) toggleTitleText.textContent = 'Marcar Produto como ESGOTADO';
+        if (toggleMsgEl) toggleMsgEl.textContent = `Deseja marcar o produto '${nome}' como ESGOTADO no catálogo?`;
+        if (toggleInfoEl) {
+          toggleInfoEl.style.background = 'var(--warning-soft)';
+          toggleInfoEl.style.color = 'var(--warning)';
+          toggleInfoEl.style.border = '1px solid var(--warning-soft)';
+          toggleInfoEl.innerHTML = '<i class="fas fa-ban" style="margin-right: 4px;"></i> O produto receberá o selo oficial ESGOTADO no catálogo e no Vercel.';
+        }
+        if (toggleBtnText) toggleBtnText.textContent = 'Marcar como Esgotado';
+        if (btnConfirmToggle) {
+          btnConfirmToggle.style.background = 'var(--warning)';
+          btnConfirmToggle.style.color = '#0c1014';
+        }
+      }
+
+      if (modalToggle) modalToggle.classList.add('active');
+    });
+  });
+
+  // Confirmação de Exclusão
+  if (btnConfirmDelete) {
+    btnConfirmDelete.addEventListener('click', async () => {
+      if (!pendingDelete) return;
+      const { slug, nome, button } = pendingDelete;
+      const autoPush = deleteAutoPush ? deleteAutoPush.checked : true;
+
+      if (modalDelete) modalDelete.classList.remove('active');
+
+      openDeployModal(
+        'Pipeline de Exclusão Git',
+        `Removendo '${nome}' (${slug}) do catálogo e sincronizando...`
+      );
+      addTerminalLog('INIT', 'INFO', `Iniciando remoção permanente do produto '${nome}' (${slug})...`);
+
+      const progressBar = document.getElementById('deploy-progress-fill');
+      const btnViewSite = document.getElementById('modal-btn-view-site');
+      const btnClose = document.getElementById('modal-btn-close');
+      const btnRetryPush = document.getElementById('modal-btn-retry-push');
+
+      if (progressBar) progressBar.style.width = '35%';
+
+      try {
+        const formData = new FormData();
+        formData.append('auto_push', autoPush ? 'true' : 'false');
+
+        const response = await fetch(`/produtos/${encodeURIComponent(slug)}/excluir`, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+          },
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.logs && Array.isArray(data.logs)) {
+          data.logs.forEach(log => {
+            addTerminalLog(log.step, log.status, log.message, log.detail);
+          });
+        }
+
+        if (data.success) {
+          if (progressBar) progressBar.style.width = '100%';
+          addTerminalLog('DELETE', 'SUCCESS', `🗑️ Produto '${nome}' excluído com sucesso do catálogo!`);
+          if (data.commit_hash) {
+            addTerminalLog('GIT', 'SUCCESS', `Commit registrado: ${data.commit_hash} - ${data.commit_message}`);
+          }
+          if (data.pushed) {
+            addTerminalLog('VERCEL', 'SUCCESS', 'Repositório atualizado no GitHub! O Vercel está reconstruindo o catálogo.');
+          }
+
+          // Remove linha da tabela com transição suave
+          const row = document.querySelector(`.produto-linha[data-slug="${slug}"]`);
+          if (row) {
+            row.style.transition = 'all 0.4s ease';
+            row.style.opacity = '0';
+            row.style.transform = 'translateX(20px)';
+            setTimeout(() => {
+              row.remove();
+              const statTotal = document.getElementById('stat-total');
+              if (statTotal) {
+                const currentTotal = parseInt(statTotal.textContent.trim(), 10) || 0;
+                statTotal.textContent = Math.max(0, currentTotal - 1);
+              }
+            }, 400);
+          }
+
+          if (btnViewSite) btnViewSite.style.display = 'inline-flex';
+          if (btnRetryPush) btnRetryPush.style.display = 'none';
+        } else {
+          if (progressBar) {
+            progressBar.style.width = '100%';
+            progressBar.style.background = 'var(--error)';
+          }
+          addTerminalLog('ERROR', 'ERROR', `Falha ao excluir produto: ${data.error || 'Erro desconhecido.'}`);
+
+          if (data.error && (data.error.includes('git push') || data.error.includes('push') || data.error.includes('remote rejected'))) {
+            if (btnRetryPush) {
+              btnRetryPush.style.display = 'inline-flex';
+              btnRetryPush.disabled = false;
+            }
+          }
+        }
+      } catch (err) {
+        if (progressBar) progressBar.style.background = 'var(--error)';
+        addTerminalLog('NETWORK', 'ERROR', `Erro de comunicação: ${err.message}`);
+      } finally {
+        if (btnClose) btnClose.style.display = 'inline-flex';
+        pendingDelete = null;
+      }
     });
   }
 
-  function escapeHtml(text) {
-    return (text || '').replace(/[&<>"']/g, m => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[m]);
+  // Confirmação de Toggle Esgotado
+  if (btnConfirmToggle) {
+    btnConfirmToggle.addEventListener('click', async () => {
+      if (!pendingToggle) return;
+      const { slug, nome, isEsgotado, button } = pendingToggle;
+      const autoPush = toggleAutoPush ? toggleAutoPush.checked : true;
+
+      if (modalToggle) modalToggle.classList.remove('active');
+
+      const actionText = isEsgotado ? 'Reativando' : 'Esgotando';
+      openDeployModal(
+        'Pipeline de Disponibilidade Git',
+        `${actionText} '${nome}' no catálogo...`
+      );
+      addTerminalLog('INIT', 'INFO', `Iniciando alteração de status de '${nome}' (${slug})...`);
+
+      const progressBar = document.getElementById('deploy-progress-fill');
+      const btnViewSite = document.getElementById('modal-btn-view-site');
+      const btnClose = document.getElementById('modal-btn-close');
+      const btnRetryPush = document.getElementById('modal-btn-retry-push');
+
+      if (progressBar) progressBar.style.width = '35%';
+
+      try {
+        const formData = new FormData();
+        formData.append('auto_push', autoPush ? 'true' : 'false');
+
+        const response = await fetch(`/produtos/${encodeURIComponent(slug)}/toggle-esgotado`, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+          },
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.logs && Array.isArray(data.logs)) {
+          data.logs.forEach(log => {
+            addTerminalLog(log.step, log.status, log.message, log.detail);
+          });
+        }
+
+        if (data.success) {
+          if (progressBar) progressBar.style.width = '100%';
+          const novoStatusEsgotado = data.esgotado;
+          const statusTxt = novoStatusEsgotado ? 'marcado como ESGOTADO' : 'REATIVADO';
+          addTerminalLog('STATUS', 'SUCCESS', `📦 Produto '${nome}' agora está ${statusTxt}!`);
+          if (data.commit_hash) {
+            addTerminalLog('GIT', 'SUCCESS', `Commit registrado: ${data.commit_hash} - ${data.commit_message}`);
+          }
+          if (data.pushed) {
+            addTerminalLog('VERCEL', 'SUCCESS', 'Repositório atualizado no GitHub! O Vercel está reconstruindo o catálogo.');
+          }
+
+          // Atualiza a interface da linha sem precisar recarregar a página
+          const row = document.querySelector(`.produto-linha[data-slug="${slug}"]`);
+          if (row) {
+            row.setAttribute('data-esgotado', novoStatusEsgotado ? 'true' : 'false');
+            if (novoStatusEsgotado) {
+              row.classList.add('is-esgotado');
+            } else {
+              row.classList.remove('is-esgotado');
+            }
+
+            // Atualiza coluna Selo
+            const colSelo = row.querySelector('.col-selo');
+            if (colSelo) {
+              if (novoStatusEsgotado) {
+                colSelo.innerHTML = `
+                  <span class="badge-esgotado" style="display: inline-flex; align-items: center; gap: 4px; background: var(--error-soft); color: var(--error); border: 1px solid var(--error-border); font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 3px 8px; border-radius: var(--radius-sm); text-transform: uppercase;">
+                    <i class="fas fa-ban"></i>
+                    <span>ESGOTADO</span>
+                  </span>
+                `;
+              } else {
+                const seloRestaurado = data.product ? data.product.selo : null;
+                const destaqueRestaurado = data.product ? data.product.destaque : false;
+                if (seloRestaurado) {
+                  colSelo.innerHTML = `<span class="preview-pill-selo" style="position: static; display: inline-block;">${escapeHtml(seloRestaurado)}</span>`;
+                } else if (destaqueRestaurado) {
+                  colSelo.innerHTML = `<span class="brand-tag" style="color: var(--cad); border-color: var(--cad-border);">DESTAQUE</span>`;
+                } else {
+                  colSelo.innerHTML = `<span style="color: var(--ink-faint); font-size: 0.8rem;">—</span>`;
+                }
+              }
+            }
+
+            // Atualiza botão na linha
+            const btnToggle = row.querySelector('.btn-toggle-esgotado');
+            if (btnToggle) {
+              btnToggle.setAttribute('data-esgotado', novoStatusEsgotado ? 'true' : 'false');
+              if (novoStatusEsgotado) {
+                btnToggle.style.color = 'var(--ok)';
+                btnToggle.style.borderColor = 'var(--ok-border)';
+                btnToggle.title = 'Reativar produto no catálogo';
+                btnToggle.innerHTML = '<i class="fas fa-box-open"></i><span>Reativar</span>';
+              } else {
+                btnToggle.style.color = 'var(--warning)';
+                btnToggle.style.borderColor = 'var(--warning-soft)';
+                btnToggle.title = 'Marcar produto como ESGOTADO no catálogo';
+                btnToggle.innerHTML = '<i class="fas fa-ban"></i><span>Esgotar</span>';
+              }
+            }
+          }
+
+          if (btnViewSite) btnViewSite.style.display = 'inline-flex';
+          if (btnRetryPush) btnRetryPush.style.display = 'none';
+        } else {
+          if (progressBar) {
+            progressBar.style.width = '100%';
+            progressBar.style.background = 'var(--error)';
+          }
+          addTerminalLog('ERROR', 'ERROR', `Falha ao alterar status: ${data.error || 'Erro desconhecido.'}`);
+
+          if (data.error && (data.error.includes('git push') || data.error.includes('push') || data.error.includes('remote rejected'))) {
+            if (btnRetryPush) {
+              btnRetryPush.style.display = 'inline-flex';
+              btnRetryPush.disabled = false;
+            }
+          }
+        }
+      } catch (err) {
+        if (progressBar) progressBar.style.background = 'var(--error)';
+        addTerminalLog('NETWORK', 'ERROR', `Erro de comunicação: ${err.message}`);
+      } finally {
+        if (btnClose) btnClose.style.display = 'inline-flex';
+        pendingToggle = null;
+      }
+    });
   }
 }
 
 // =============================================================================
-// 10. Ação de Git Pull sob Demanda
+// 12. Ação de Git Pull sob Demanda
 // =============================================================================
 function initGitPullAction() {
   const btnPull = document.getElementById('btn-git-pull');

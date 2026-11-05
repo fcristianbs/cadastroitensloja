@@ -13,12 +13,14 @@ from app.services.git_service import (
     git_push,
     get_repo_status
 )
-from app.services.image_service import save_product_image, rename_product_images
+from app.services.image_service import save_product_image, rename_product_images, delete_product_images
 from app.services.product_service import (
     build_product_record,
     generate_slug,
     insert_product,
     update_product,
+    delete_product,
+    toggle_esgotado_product,
     validate_product_data,
     get_produto_by_slug
 )
@@ -191,6 +193,191 @@ def run_publish_pipeline(
     except Exception as e:
         error_detail = str(e)
         log("ERROR", "ERROR", f"Falha no processo: {error_detail}")
+        result["success"] = False
+        result["error"] = error_detail
+        return result
+
+
+def run_delete_pipeline(slug: str, auto_push: bool = True) -> Dict[str, Any]:
+    """
+    Executa o fluxo completo para remover um produto do catálogo:
+    1. Git Pull origin main
+    2. Remove fotos associadas do produto
+    3. Remove o registro de data/produtos.json
+    4. Git Add e Commit: feat(catalogo): remover produto <nome> (<slug>)
+    5. Git Push origin main
+    """
+    logs: List[Dict[str, str]] = []
+    
+    def log(step: str, status: str, message: str, detail: str = ""):
+        logs.append({
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "step": step,
+            "status": status,
+            "message": message,
+            "detail": detail
+        })
+
+    result: Dict[str, Any] = {
+        "success": False,
+        "logs": logs,
+        "product": None,
+        "commit_hash": None,
+        "commit_message": None,
+        "pushed": False,
+        "error": None
+    }
+
+    try:
+        log("PRE_FLIGHT", "INFO", "Verificando o repositório local...")
+        repo_info = get_repo_status()
+        if not repo_info.get("is_git_repo"):
+            raise RuntimeError(f"Repositório Git não configurado ou inválido: {repo_info.get('error')}")
+
+        # Git Pull
+        log("GIT_PULL", "INFO", f"Executando 'git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}'...")
+        try:
+            _, pull_output = git_pull()
+            log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
+        except GitServiceError as e:
+            log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
+
+        # Exclui imagens físicas
+        log("IMAGE_DELETE", "INFO", f"Removendo fotos associadas a '{slug}'...")
+        deleted_images = delete_product_images(slug)
+        if deleted_images:
+            log("IMAGE_DELETE", "SUCCESS", f"{len(deleted_images)} arquivo(s) de imagem removido(s).", "\n".join(deleted_images))
+
+        # Exclui do JSON
+        log("JSON_DELETE", "INFO", f"Removendo produto '{slug}' de data/produtos.json...")
+        del_success, removed_prod = delete_product(slug)
+        if not del_success or not removed_prod:
+            raise ValueError(f"Produto '{slug}' não foi encontrado no catálogo para exclusão.")
+            
+        prod_name = removed_prod.get("nome", slug)
+        log("JSON_DELETE", "SUCCESS", f"Produto '{prod_name}' removido com sucesso de data/produtos.json.")
+
+        # Git Add
+        files_to_stage = ["data/produtos.json"] + deleted_images
+        log("GIT_ADD", "INFO", f"Preparando alterações para commit: {', '.join(files_to_stage)}")
+        git_add(files_to_stage)
+        log("GIT_ADD", "SUCCESS", "Alterações adicionadas à staging area.")
+
+        # Git Commit
+        commit_msg = f"feat(catalogo): remover produto {prod_name} ({slug})"
+        log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
+        _, commit_hash, commit_out = git_commit(commit_msg)
+        log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
+
+        # Git Push
+        if auto_push and Config.ENABLE_AUTO_PUSH:
+            log("GIT_PUSH", "INFO", f"Enviando alterações para '{Config.GIT_REMOTE}/{Config.GIT_BRANCH}'...")
+            _, push_out = git_push()
+            log("GIT_PUSH", "SUCCESS", "Push concluído com sucesso! Deploy disparado no Vercel.", push_out)
+            result["pushed"] = True
+        else:
+            log("GIT_PUSH", "INFO", "Push automático desativado. Alterações salvas localmente.")
+            result["pushed"] = False
+
+        result["success"] = True
+        result["product"] = removed_prod
+        result["commit_hash"] = commit_hash
+        result["commit_message"] = commit_msg
+        return result
+
+    except Exception as e:
+        error_detail = str(e)
+        log("ERROR", "ERROR", f"Falha na exclusão do produto: {error_detail}")
+        result["success"] = False
+        result["error"] = error_detail
+        return result
+
+
+def run_toggle_esgotado_pipeline(slug: str, auto_push: bool = True) -> Dict[str, Any]:
+    """
+    Executa o fluxo para alternar o status de esgotado de um produto no catálogo:
+    1. Git Pull origin main
+    2. Alterna 'esgotado' e ajusta selo no data/produtos.json
+    3. Git Add e Commit: feat(catalogo): marcar produto <nome> como esgotado / reativar
+    4. Git Push origin main
+    """
+    logs: List[Dict[str, str]] = []
+    
+    def log(step: str, status: str, message: str, detail: str = ""):
+        logs.append({
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "step": step,
+            "status": status,
+            "message": message,
+            "detail": detail
+        })
+
+    result: Dict[str, Any] = {
+        "success": False,
+        "logs": logs,
+        "product": None,
+        "esgotado": False,
+        "commit_hash": None,
+        "commit_message": None,
+        "pushed": False,
+        "error": None
+    }
+
+    try:
+        log("PRE_FLIGHT", "INFO", "Verificando o repositório local...")
+        repo_info = get_repo_status()
+        if not repo_info.get("is_git_repo"):
+            raise RuntimeError(f"Repositório Git não configurado ou inválido: {repo_info.get('error')}")
+
+        # Git Pull
+        log("GIT_PULL", "INFO", f"Executando 'git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}'...")
+        try:
+            _, pull_output = git_pull()
+            log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
+        except GitServiceError as e:
+            log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
+
+        # Alterna status no JSON
+        toggle_success, novo_status, updated_prod = toggle_esgotado_product(slug)
+        if not toggle_success or not updated_prod:
+            raise ValueError(f"Produto '{slug}' não foi encontrado no catálogo.")
+
+        prod_name = updated_prod.get("nome", slug)
+        status_label = "marcado como ESGOTADO" if novo_status else "REATIVADO no catálogo"
+        log("STATUS_UPDATE", "SUCCESS", f"Produto '{prod_name}' agora está {status_label}.")
+
+        # Git Add
+        files_to_stage = ["data/produtos.json"]
+        git_add(files_to_stage)
+        log("GIT_ADD", "SUCCESS", "data/produtos.json adicionado à staging area.")
+
+        # Git Commit
+        action_verb = "marcar produto como esgotado" if novo_status else "reativar produto"
+        commit_msg = f"feat(catalogo): {action_verb} {prod_name} ({slug})"
+        log("GIT_COMMIT", "INFO", f"Criando commit: '{commit_msg}'...")
+        _, commit_hash, commit_out = git_commit(commit_msg)
+        log("GIT_COMMIT", "SUCCESS", f"Commit criado com sucesso: [{commit_hash}] {commit_msg}", commit_out)
+
+        # Git Push
+        if auto_push and Config.ENABLE_AUTO_PUSH:
+            log("GIT_PUSH", "INFO", f"Enviando alterações para '{Config.GIT_REMOTE}/{Config.GIT_BRANCH}'...")
+            _, push_out = git_push()
+            log("GIT_PUSH", "SUCCESS", "Push concluído com sucesso! Deploy disparado no Vercel.", push_out)
+            result["pushed"] = True
+        else:
+            log("GIT_PUSH", "INFO", "Push automático desativado. Alterações salvas localmente.")
+            result["pushed"] = False
+
+        result["success"] = True
+        result["product"] = updated_prod
+        result["esgotado"] = novo_status
+        result["commit_hash"] = commit_hash
+        result["commit_message"] = commit_msg
+        return result
+
+    except Exception as e:
+        error_detail = str(e)
+        log("ERROR", "ERROR", f"Falha ao alterar status do produto: {error_detail}")
         result["success"] = False
         result["error"] = error_detail
         return result

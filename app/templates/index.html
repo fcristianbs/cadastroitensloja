@@ -507,45 +507,6 @@
   </aside>
 </div>
 
-<!-- =========================================================================
-     MODAL DE PROGRESSO DO PIPELINE GIT / DEPLOY
-     ========================================================================= -->
-<div id="deploy-modal" class="modal-backdrop">
-  <div class="modal-dialog">
-    <div class="modal-header">
-      <div class="modal-title">
-        <i class="fas fa-terminal" style="color: var(--cad);"></i>
-        <span>Pipeline de Publicação Git</span>
-      </div>
-    </div>
-
-    <div class="modal-body">
-      <p style="font-size: 0.88rem; color: var(--ink-muted); margin-bottom: 0.5rem;">
-        Executando validações, sincronização e deploy automatizado para o Vercel...
-      </p>
-
-      <div class="progress-bar-container">
-        <div id="deploy-progress-fill" class="progress-bar-fill"></div>
-      </div>
-
-      <div id="terminal-log-content" class="terminal-log-box"></div>
-    </div>
-
-    <div class="modal-footer">
-      <button type="button" id="modal-btn-retry-push" class="btn btn-primary" style="display: none;">
-        <i class="fas fa-arrows-rotate"></i>
-        <span>Tentar Push Novamente</span>
-      </button>
-      <a id="modal-btn-view-site" href="{{ config.VERCEL_DEPLOY_URL }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: none;">
-        <i class="fas fa-arrow-up-right-from-square"></i>
-        <span>Ver no Catálogo Online</span>
-      </a>
-      <button type="button" id="modal-btn-close" class="btn btn-outline" style="display: none;">
-        <span>Fechar</span>
-      </button>
-    </div>
-  </div>
-</div>
 <!-- Dados de Categorias e Subcategorias para o Javascript -->
 <script id="dados-categorias" type="application/json">
   {{ categorias|tojson }}

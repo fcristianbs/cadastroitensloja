@@ -369,6 +369,8 @@ def build_product_record(data: Dict[str, Any]) -> Dict[str, Any]:
         "specs_resumo": str(data.get("specs_resumo", "")).strip() or None,
         "destaque": destaque,
         "selo": data.get("selo") if data.get("selo") else None,
+        "esgotado": bool(data.get("esgotado", False)),
+        "selo_anterior": data.get("selo_anterior") if data.get("selo_anterior") else None,
         "ordem": ordem,
         "specs": specs,
         "variacoes": variacoes,
@@ -418,4 +420,66 @@ def update_product(original_slug: str, product_record: Dict[str, Any]) -> List[D
         
     save_produtos(produtos)
     return produtos
+
+
+def delete_product(slug: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """
+    Remove permanentemente um produto do catálogo data/produtos.json pelo slug.
+    Retorna (sucesso, produto_removido).
+    """
+    produtos = load_produtos()
+    removed_product = None
+    nova_lista = []
+    
+    for p in produtos:
+        if p.get("slug") == slug:
+            removed_product = p
+        else:
+            nova_lista.append(p)
+            
+    if removed_product:
+        save_produtos(nova_lista)
+        return True, removed_product
+        
+    return False, None
+
+
+def toggle_esgotado_product(slug: str) -> Tuple[bool, bool, Optional[Dict[str, Any]]]:
+    """
+    Alterna o status de 'esgotado' de um produto:
+    - Se estava esgotado: reativa o produto e restaura o selo anterior.
+    - Se estava ativo: marca como esgotado e define o selo como 'ESGOTADO'.
+    Retorna (sucesso, novo_status_esgotado, produto_atualizado).
+    """
+    produtos = load_produtos()
+    found_product = None
+    novo_status = False
+    
+    for p in produtos:
+        if p.get("slug") == slug:
+            esta_esgotado = bool(p.get("esgotado")) or p.get("selo") == "ESGOTADO"
+            if esta_esgotado:
+                # Reativa o produto
+                p["esgotado"] = False
+                # Restaura selo anterior se houver
+                selo_ant = p.get("selo_anterior")
+                p["selo"] = selo_ant if selo_ant and selo_ant != "ESGOTADO" else None
+                novo_status = False
+            else:
+                # Marca como esgotado
+                p["esgotado"] = True
+                selo_atual = p.get("selo")
+                if selo_atual and selo_atual != "ESGOTADO":
+                    p["selo_anterior"] = selo_atual
+                p["selo"] = "ESGOTADO"
+                novo_status = True
+                
+            found_product = p
+            break
+            
+    if found_product:
+        save_produtos(produtos)
+        return True, novo_status, found_product
+        
+    return False, False, None
 

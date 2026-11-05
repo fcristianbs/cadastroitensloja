@@ -144,3 +144,36 @@ def rename_product_images(old_slug: str, new_slug: str) -> Optional[str]:
     if renamed_filename:
         return f"/static/img/produtos/{renamed_filename}"
     return None
+
+
+def delete_product_images(slug: str) -> List[str]:
+    """
+    Remove fisicamente as fotos associadas a um produto das pastas static/ e public/static/.
+    Retorna a lista de caminhos relativos para remoção/staging no Git.
+    """
+    if not slug:
+        return []
+        
+    static_dir = Config.STATIC_IMG_DIR
+    public_dir = Config.PUBLIC_IMG_DIR
+    deleted_relative_paths: List[str] = []
+    
+    for ext in ALLOWED_EXTENSIONS:
+        target_name = f"{slug}.{ext}"
+        static_file = static_dir / target_name
+        if static_file.exists():
+            try:
+                static_file.unlink()
+                deleted_relative_paths.append(f"static/img/produtos/{target_name}")
+            except Exception as e:
+                print(f"[AVISO] Falha ao remover imagem estática {static_file}: {e}")
+                
+        public_file = public_dir / target_name
+        if public_file.exists():
+            try:
+                public_file.unlink()
+                deleted_relative_paths.append(f"public/static/img/produtos/{target_name}")
+            except Exception as e:
+                print(f"[AVISO] Falha ao remover imagem pública {public_file}: {e}")
+                
+    return deleted_relative_paths

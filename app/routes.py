@@ -18,7 +18,11 @@ from app.services.product_service import (
     load_categorias,
     MATERIAIS_COMUNS
 )
-from app.services.publisher import run_publish_pipeline
+from app.services.publisher import (
+    run_publish_pipeline,
+    run_delete_pipeline,
+    run_toggle_esgotado_pipeline
+)
 
 main_bp = Blueprint('main', __name__)
 api_bp = Blueprint('api', __name__)
@@ -80,6 +84,7 @@ def produtos_list():
     categorias = load_categorias()
     total = len(produtos)
     destaques = sum(1 for p in produtos if p.get('destaque'))
+    esgotados = sum(1 for p in produtos if p.get('esgotado') or p.get('selo') == 'ESGOTADO')
     
     # Contagem por categoria
     categorias_count = {}
@@ -93,6 +98,7 @@ def produtos_list():
         categorias=categorias,
         total=total,
         destaques=destaques,
+        esgotados=esgotados,
         categorias_count=categorias_count,
         active_tab='produtos'
     )
@@ -248,6 +254,43 @@ def cadastrar_produto():
         return redirect(url_for('main.index'))
 
 
+@main_bp.route('/produtos/<slug>/excluir', methods=['POST'])
+def excluir_produto(slug):
+    """Exclui o produto do catálogo e executa commit e push."""
+    auto_push = request.form.get('auto_push', 'true').lower() in ('true', '1', 'on', 'yes')
+    result = run_delete_pipeline(slug, auto_push=auto_push)
+    
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    if is_ajax:
+        return jsonify(result)
+        
+    if result['success']:
+        flash(f"Produto '{slug}' excluído do catálogo com sucesso! Commit: {result.get('commit_hash')}", 'success')
+    else:
+        flash(f"Erro ao excluir produto: {result.get('error')}", 'danger')
+        
+    return redirect(url_for('main.produtos_list'))
+
+
+@main_bp.route('/produtos/<slug>/toggle-esgotado', methods=['POST'])
+def alternar_esgotado_produto(slug):
+    """Alterna o status de esgotado do produto no catálogo e executa commit e push."""
+    auto_push = request.form.get('auto_push', 'true').lower() in ('true', '1', 'on', 'yes')
+    result = run_toggle_esgotado_pipeline(slug, auto_push=auto_push)
+    
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    if is_ajax:
+        return jsonify(result)
+        
+    if result['success']:
+        status_txt = "marcado como ESGOTADO" if result.get('esgotado') else "REATIVADO no catálogo"
+        flash(f"Produto '{slug}' foi {status_txt}! Commit: {result.get('commit_hash')}", 'success')
+    else:
+        flash(f"Erro ao alterar status: {result.get('error')}", 'danger')
+        
+    return redirect(url_for('main.produtos_list'))
+
+
 # ==============================================================================
 # API Endpoints
 # ==============================================================================
@@ -262,6 +305,22 @@ def api_get_categorias():
 def api_get_produtos():
     """Retorna a lista completa de produtos cadastrados."""
     return jsonify(load_produtos())
+
+
+@api_bp.route('/produtos/<slug>/excluir', methods=['POST'])
+def api_excluir_produto(slug):
+    """API para exclusão de produto com pipeline Git."""
+    data = request.get_json(silent=True) or {}
+    auto_push = data.get('auto_push', True)
+    return jsonify(run_delete_pipeline(slug, auto_push=auto_push))
+
+
+@api_bp.route('/produtos/<slug>/toggle-esgotado', methods=['POST'])
+def api_toggle_esgotado(slug):
+    """API para alternar status de esgotado de produto com pipeline Git."""
+    data = request.get_json(silent=True) or {}
+    auto_push = data.get('auto_push', True)
+    return jsonify(run_toggle_esgotado_pipeline(slug, auto_push=auto_push))
 
 
 @api_bp.route('/check-slug', methods=['GET'])

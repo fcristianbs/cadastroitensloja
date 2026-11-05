@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from app import create_app
 
 class FlaskAppTestCase(unittest.TestCase):
@@ -76,6 +77,76 @@ class FlaskAppTestCase(unittest.TestCase):
         self.assertIn(b'Modo Edi', response.data)
         self.assertIn(b'suporte-starlink-mini-veicular', response.data)
         self.assertIn(b'Salvar Altera', response.data)
+
+    def test_produtos_page_has_actions_and_modals(self):
+        """Testa se a página de produtos contém os botões de ação e modais."""
+        response = self.client.get('/produtos')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'btn-toggle-esgotado', response.data)
+        self.assertIn(b'btn-excluir-produto', response.data)
+        self.assertIn(b'modal-confirm-delete', response.data)
+        self.assertIn(b'modal-confirm-toggle', response.data)
+        self.assertIn(b'filtro-status', response.data)
+
+    @patch('app.routes.run_delete_pipeline')
+    def test_post_excluir_produto_ajax(self, mock_delete_pipe):
+        """Testa chamada AJAX para exclusão de produto."""
+        mock_delete_pipe.return_value = {
+            'success': True,
+            'commit_hash': 'a1b2c3d',
+            'commit_message': 'feat(catalogo): remover produto Teste (teste-slug)',
+            'pushed': True,
+            'logs': [{'step': 'JSON_DELETE', 'status': 'SUCCESS', 'message': 'Removido'}]
+        }
+        res = self.client.post(
+            '/produtos/teste-slug/excluir',
+            data={'auto_push': 'true'},
+            headers={'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['commit_hash'], 'a1b2c3d')
+        mock_delete_pipe.assert_called_once_with('teste-slug', auto_push=True)
+
+    @patch('app.routes.run_toggle_esgotado_pipeline')
+    def test_post_toggle_esgotado_ajax(self, mock_toggle_pipe):
+        """Testa chamada AJAX para alternar status de esgotado."""
+        mock_toggle_pipe.return_value = {
+            'success': True,
+            'esgotado': True,
+            'commit_hash': 'e5f6g7h',
+            'commit_message': 'feat(catalogo): marcar produto como esgotado',
+            'pushed': True,
+            'logs': [{'step': 'STATUS_UPDATE', 'status': 'SUCCESS', 'message': 'Esgotado'}]
+        }
+        res = self.client.post(
+            '/produtos/teste-slug/toggle-esgotado',
+            data={'auto_push': 'true'},
+            headers={'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data['success'])
+        self.assertTrue(data['esgotado'])
+        mock_toggle_pipe.assert_called_once_with('teste-slug', auto_push=True)
+
+    @patch('app.routes.run_delete_pipeline')
+    @patch('app.routes.run_toggle_esgotado_pipeline')
+    def test_api_endpoints_excluir_and_toggle(self, mock_toggle, mock_delete):
+        """Testa endpoints da API JSON /api/produtos/<slug>/..."""
+        mock_delete.return_value = {'success': True, 'commit_hash': '111'}
+        mock_toggle.return_value = {'success': True, 'esgotado': False, 'commit_hash': '222'}
+
+        res_del = self.client.post('/api/produtos/item-x/excluir', json={'auto_push': False})
+        self.assertEqual(res_del.status_code, 200)
+        self.assertTrue(res_del.get_json()['success'])
+        mock_delete.assert_called_once_with('item-x', auto_push=False)
+
+        res_tog = self.client.post('/api/produtos/item-x/toggle-esgotado', json={'auto_push': True})
+        self.assertEqual(res_tog.status_code, 200)
+        self.assertTrue(res_tog.get_json()['success'])
+        mock_toggle.assert_called_once_with('item-x', auto_push=True)
 
 if __name__ == '__main__':
     unittest.main()

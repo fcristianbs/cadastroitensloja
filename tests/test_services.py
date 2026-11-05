@@ -1,10 +1,13 @@
 import unittest
+from unittest.mock import patch, MagicMock
 from app.services.product_service import (
     generate_slug,
     validate_product_data,
     build_product_record,
     load_categorias,
-    get_allowed_category_slugs
+    get_allowed_category_slugs,
+    delete_product,
+    toggle_esgotado_product
 )
 
 class ProductServiceTestCase(unittest.TestCase):
@@ -167,6 +170,60 @@ class ProductServiceTestCase(unittest.TestCase):
         self.assertEqual(len(record["cores"]), 1)
         self.assertEqual(len(record["instalacao"]), 2)
         self.assertEqual(record["mercadoLivreUrl"], "https://mercadolivre.com.br/item")
+
+    @patch('app.services.product_service.save_produtos')
+    @patch('app.services.product_service.load_produtos')
+    def test_delete_product(self, mock_load, mock_save):
+        """Testa exclusão de produto do array de produtos."""
+        fake_db = [
+            {"slug": "item-1", "nome": "Item 1"},
+            {"slug": "item-2", "nome": "Item 2"}
+        ]
+        mock_load.return_value = list(fake_db)
+
+        # Exclui item existente
+        success, removed = delete_product("item-1")
+        self.assertTrue(success)
+        self.assertEqual(removed["slug"], "item-1")
+        mock_save.assert_called_once()
+        saved_list = mock_save.call_args[0][0]
+        self.assertEqual(len(saved_list), 1)
+        self.assertEqual(saved_list[0]["slug"], "item-2")
+
+        # Tenta excluir item inexistente
+        mock_save.reset_mock()
+        mock_load.return_value = list(fake_db)
+        success_inexistente, removed_none = delete_product("item-inexistente")
+        self.assertFalse(success_inexistente)
+        self.assertIsNone(removed_none)
+        mock_save.assert_not_called()
+
+    @patch('app.services.product_service.save_produtos')
+    @patch('app.services.product_service.load_produtos')
+    def test_toggle_esgotado_product(self, mock_load, mock_save):
+        """Testa alternância de produto entre esgotado e ativo."""
+        fake_db = [
+            {"slug": "item-1", "nome": "Item 1", "esgotado": False, "selo": "NOVO"}
+        ]
+        mock_load.return_value = fake_db
+
+        # 1. Ativo -> Esgotado
+        success, novo_status, prod = toggle_esgotado_product("item-1")
+        self.assertTrue(success)
+        self.assertTrue(novo_status)
+        self.assertTrue(prod["esgotado"])
+        self.assertEqual(prod["selo"], "ESGOTADO")
+        self.assertEqual(prod["selo_anterior"], "NOVO")
+        mock_save.assert_called_once()
+
+        # 2. Esgotado -> Reativar
+        mock_save.reset_mock()
+        success, novo_status, prod = toggle_esgotado_product("item-1")
+        self.assertTrue(success)
+        self.assertFalse(novo_status)
+        self.assertFalse(prod["esgotado"])
+        self.assertEqual(prod["selo"], "NOVO")
+        mock_save.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()
