@@ -698,7 +698,7 @@ def get_pending_batch_status() -> Dict[str, Any]:
 
     if total_changes > 0:
         detalhe = f" ({', '.join(parts)})" if parts else ""
-        summary_text = f"{total_changes} alteraç{'ões' if total_changes > 1 else 'ão'} local{'is' if total_changes > 1 else ''} pronta{'s' if total_changes > 1 else ''}{detalhe}"
+        summary_text = f"{total_changes} alteraç{'ões' if total_changes > 1 else 'ão'} {'locais' if total_changes > 1 else 'local'} pronta{'s' if total_changes > 1 else ''}{detalhe}"
     elif ahead_count > 0:
         summary_text = f"{ahead_count} commit{'s' if ahead_count > 1 else ''} pendente{'s' if ahead_count > 1 else ''} de push para a Vercel"
     else:
