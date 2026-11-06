@@ -247,11 +247,13 @@ def validate_product_data(data: Dict[str, Any], is_new: bool = True, original_sl
         allowed_subs_map = get_allowed_subcategories_map()
         valid_subs_for_active_cats = set()
         for cat in categorias:
-            valid_subs_for_active_cats.update(allowed_subs_map.get(cat, []))
+            for s in allowed_subs_map.get(cat, []):
+                valid_subs_for_active_cats.add(str(s).lower().strip())
         valid_subs_for_active_cats.add("geral")
 
         for sub in subcategorias:
-            if valid_subs_for_active_cats and sub not in valid_subs_for_active_cats:
+            sub_norm = str(sub).lower().strip()
+            if valid_subs_for_active_cats and sub_norm not in valid_subs_for_active_cats:
                 errors.append(f"Subcategoria '{sub}' não pertence a nenhuma das categorias selecionadas ({', '.join(categorias)}).")
         
     # Validação de Resumo e Descrição
@@ -470,7 +472,14 @@ def build_product_record(data: Dict[str, Any]) -> Dict[str, Any]:
     else:
         subcategorias = []
 
-    single_sub = str(data.get("subcategoria", "")).strip()
+    single_sub = str(data.get("subcategoria", "")).strip().lower()
+    norm_subs = []
+    for s in subcategorias:
+        s_lower = str(s).strip().lower()
+        if s_lower and s_lower not in norm_subs:
+            norm_subs.append(s_lower)
+    subcategorias = norm_subs
+
     if single_sub and single_sub not in subcategorias:
         subcategorias.insert(0, single_sub)
     elif not subcategorias and single_sub:
