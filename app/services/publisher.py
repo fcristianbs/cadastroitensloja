@@ -425,14 +425,6 @@ def run_batch_publish_pipeline() -> Dict[str, Any]:
 
         log("VALIDATION", "SUCCESS", f"Validação concluída: Todas as {len(produtos)} peças atendem às regras de negócio.")
 
-        # Git Pull
-        log("GIT_PULL", "INFO", f"Sincronizando com o GitHub ('git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}')...")
-        try:
-            _, pull_output = git_pull()
-            log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
-        except GitServiceError as e:
-            log("GIT_PULL", "WARNING", f"Aviso na sincronização prévia: {e}", e.stderr or e.stdout)
-
         # Git Add
         files_to_stage = ["data/produtos.json"]
         if Config.CATEGORIAS_JSON_PATH.exists():
@@ -470,11 +462,19 @@ def run_batch_publish_pipeline() -> Dict[str, Any]:
             log("GIT_COMMIT", "SUCCESS", f"Commit criado: [{commit_hash}] {commit_msg}", commit_out)
         except GitServiceError as e:
             if "nothing to commit" in (e.stderr or e.stdout).lower():
-                log("GIT_COMMIT", "INFO", "Nenhum novo commit necessário, enviando commits pendentes locais.")
+                log("GIT_COMMIT", "INFO", "Nenhum novo commit necessário, verificando commits pendentes.")
                 code, hash_out, _ = run_git_command(["rev-parse", "--short", "HEAD"])
                 commit_hash = hash_out
             else:
                 raise
+
+        # Git Pull com working directory limpo após commit
+        log("GIT_PULL", "INFO", f"Sincronizando com o GitHub ('git pull {Config.GIT_REMOTE} {Config.GIT_BRANCH}')...")
+        try:
+            _, pull_output = git_pull()
+            log("GIT_PULL", "SUCCESS", "Repositório sincronizado com sucesso.", pull_output)
+        except GitServiceError as e:
+            log("GIT_PULL", "WARNING", f"Aviso na sincronização: {e}", e.stderr or e.stdout)
 
         # Git Push
         log("GIT_PUSH", "INFO", f"Enviando lote para '{Config.GIT_REMOTE}/{Config.GIT_BRANCH}' (1 deploy na Vercel)...")

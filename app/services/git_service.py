@@ -204,10 +204,25 @@ def git_push(branch: Optional[str] = None, remote: Optional[str] = None, max_ret
             "The remote end hung up unexpectedly"
         ])
         
-        if is_transient and attempt < max_retries:
+        is_non_fast_forward = any(msg in combined_err for msg in [
+            "non-fast-forward",
+            "[rejected]",
+            "fetch first",
+            "behind its remote counterpart"
+        ])
+
+        if is_non_fast_forward and attempt < max_retries:
+            # Sincroniza branch com pull antes de tentar o push novamente
+            try:
+                run_git_command(["pull", target_remote, target_branch])
+            except Exception:
+                pass
+            time.sleep(1.0)
+            continue
+        elif is_transient and attempt < max_retries:
             time.sleep(retry_delay * attempt)
             continue
-        elif not is_transient:
+        elif not is_transient and not is_non_fast_forward:
             break
 
     raise GitServiceError(
